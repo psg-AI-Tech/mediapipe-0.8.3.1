@@ -42,14 +42,17 @@ DEFINE_string(output_video_path, "",
 
 absl::Status RunMPPGraph() {
   std::string calculator_graph_config_contents;
+  printf("start: mmp\n");
   MP_RETURN_IF_ERROR(mediapipe::file::GetContents(
       absl::GetFlag(FLAGS_calculator_graph_config_file),
       &calculator_graph_config_contents));
+  printf("GetContents\n");    
   LOG(INFO) << "Get calculator graph config contents: "
             << calculator_graph_config_contents;
   mediapipe::CalculatorGraphConfig config =
       mediapipe::ParseTextProtoOrDie<mediapipe::CalculatorGraphConfig>(
           calculator_graph_config_contents);
+  printf("initialize graph\n");
 
   LOG(INFO) << "Initialize the calculator graph.";
   mediapipe::CalculatorGraph graph;

@@ -46,6 +46,7 @@ DEFINE_string(output_video_path, "",
 
 absl::Status RunMPPGraph() {
   std::string calculator_graph_config_contents;
+  printf("start: MPPGraph\n");
   MP_RETURN_IF_ERROR(mediapipe::file::GetContents(
       absl::GetFlag(FLAGS_calculator_graph_config_file),
       &calculator_graph_config_contents));
