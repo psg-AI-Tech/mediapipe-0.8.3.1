@@ -5,3 +5,9 @@ mediapipe/provisioning_profile.mobileprovision
 .configure.bazelrc
 .user.bazelrc
 .doc
+*_pb2.py
+dist
+mediapipe.egg-info
+__pycache__
+testdata
+*.so

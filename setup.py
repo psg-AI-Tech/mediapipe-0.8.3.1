@@ -242,12 +242,17 @@ class BuildBinaryGraphs(build.build):
         '--action_env=PYTHON_BIN_PATH=' + _normalize_path(sys.executable),
         os.path.join('mediapipe/modules/', graph_path),
     ]
+    print('src: ',os.path.join('mediapipe/modules/', graph_path))
     if not self.link_opencv and not IS_WINDOWS:
       bazel_command.append('--define=OPENCV=source')
+      print("not windows")
+    print("call bazel cmd")
     if subprocess.call(bazel_command) != 0:
+      print("call bazel cmd error")
       sys.exit(-1)
     output_name = graph_path + '.binarypb'
     output_file = os.path.join('mediapipe/modules', output_name)
+    print("output_file: ",output_file)
     shutil.copyfile(
         os.path.join('bazel-bin/mediapipe/modules/', output_name), output_file)
 

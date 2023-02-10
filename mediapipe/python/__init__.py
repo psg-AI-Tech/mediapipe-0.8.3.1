@@ -13,6 +13,8 @@
 # limitations under the License.
 
 """MediaPipe Python API."""
+import sys
+sys.path.append("/home/zj/_github_/folder_python/mediapipe-0.8.3.1/mediapipe/python")
 
 from mediapipe.python._framework_bindings import resource_util
 from mediapipe.python._framework_bindings.calculator_graph import CalculatorGraph

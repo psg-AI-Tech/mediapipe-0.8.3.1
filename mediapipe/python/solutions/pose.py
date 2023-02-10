@@ -76,7 +76,8 @@ class PoseLandmark(enum.IntEnum):
   LEFT_FOOT_INDEX = 31
   RIGHT_FOOT_INDEX = 32
 
-BINARYPB_FILE_PATH = 'mediapipe/modules/pose_landmark/pose_landmark_cpu.binarypb'
+# BINARYPB_FILE_PATH = 'mediapipe/modules/pose_landmark/pose_landmark_cpu.binarypb'
+BINARYPB_FILE_PATH = '/home/zj/_github_/folder_python/mediapipe-0.8.3.1/bazel-bin/mediapipe/graphs/pose_tracking/subgraphs/pose_renderer_cpu.binarypb'
 UPPER_BODY_POSE_CONNECTIONS = frozenset([
     (PoseLandmark.NOSE, PoseLandmark.RIGHT_EYE_INNER),
     (PoseLandmark.RIGHT_EYE_INNER, PoseLandmark.RIGHT_EYE),

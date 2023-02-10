@@ -218,10 +218,11 @@ class SolutionBase:
     validated_graph = validated_graph_config.ValidatedGraphConfig()
     if binary_graph_path:
       validated_graph.initialize(
+          # binary_graph_path= binary_graph_path)
           binary_graph_path=os.path.join(root_path, binary_graph_path))
     else:
       validated_graph.initialize(graph_config=graph_config)
-
+    print("--------",binary_graph_path )
     canonical_graph_config_proto = self._initialize_graph_interface(
         validated_graph, side_inputs, outputs)
     if calculator_params:
