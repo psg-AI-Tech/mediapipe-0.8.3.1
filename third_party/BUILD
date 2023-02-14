@@ -64,7 +64,7 @@ config_setting(
 alias(
     name = "opencv",
     actual = select({
-        ":opencv_source_build": ":opencv_cmake",
+        # ":opencv_source_build": ":opencv_cmake",
         "//conditions:default": ":opencv_binary",
     }),
     visibility = ["//visibility:public"],
