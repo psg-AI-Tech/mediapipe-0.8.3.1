@@ -12,7 +12,8 @@
 #     output_stream: "DETECTIONS:pose_detections"
 #   }
 
-type: "PoseDetectionCpu"
+# type: "PoseDetectionCpu"
+type: "PoseDetectionCpu_cputest"
 
 # CPU image. (ImageFrame)
 input_stream: "IMAGE:image"

@@ -23,7 +23,7 @@
 #     output_stream: "LANDMARKS:pose_landmarks"
 #   }
 
-type: "PoseLandmarkCpu"
+type: "PoseLandmarkCpu_test"
 
 # CPU image. (ImageFrame)
 input_stream: "IMAGE:image"
@@ -142,7 +142,8 @@ node {
 
 # Detects poses.
 node {
-  calculator: "PoseDetectionCpu"
+  # calculator: "PoseDetectionCpu"
+  calculator: "PoseDetectionCpu_cputest"
   input_stream: "IMAGE:image_for_pose_detection"
   output_stream: "DETECTIONS:pose_detections"
 }

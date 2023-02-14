@@ -168,9 +168,9 @@ class Pose(SolutionBase):
                 .ConstantSidePacketCalculatorOptions.ConstantSidePacket(
                     bool_value=not static_image_mode)
             ],
-            'poselandmarkcpu__posedetectioncpu__TensorsToDetectionsCalculator.min_score_thresh':
+            'poselandmarkcpu_cputest__posedetectioncpu__TensorsToDetectionsCalculator.min_score_thresh':
                 min_detection_confidence,
-            'poselandmarkcpu__poselandmarkbyroicpu__ThresholdingCalculator.threshold':
+            'poselandmarkcpu_cputest__poselandmarkbyroicpu__ThresholdingCalculator.threshold':
                 min_tracking_confidence,
         },
         outputs=['pose_landmarks'])

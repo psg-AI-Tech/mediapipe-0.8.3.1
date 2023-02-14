@@ -142,7 +142,8 @@ node {
 
 # Detects poses.
 node {
-  calculator: "PoseDetectionGpu"
+  # calculator: "PoseDetectionGpu"
+  # calculator: "PoseDetectionGpu_gputest"
   input_stream: "IMAGE:image_for_pose_detection"
   output_stream: "DETECTIONS:pose_detections"
 }

@@ -11,3 +11,4 @@ mediapipe.egg-info
 __pycache__
 testdata
 *.so
+build/
