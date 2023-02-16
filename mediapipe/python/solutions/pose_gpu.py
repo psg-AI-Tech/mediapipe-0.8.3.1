@@ -76,10 +76,8 @@ class PoseLandmark(enum.IntEnum):
   LEFT_FOOT_INDEX = 31
   RIGHT_FOOT_INDEX = 32
 
-# BINARYPB_FILE_PATH = 'mediapipe/modules/pose_landmark/pose_landmark_cpu.binarypb'
-BINARYPB_FILE_PATH = '/home/zj/_github_/folder_python/mediapipe-0.8.3.1/bazel-bin/mediapipe/modules/pose_landmark/pose_landmark_cpu.binarypb'
-# BINARYPB_FILE_PATH = '/home/zj/_github_/folder_python/mediapipe-0.8.3.1/bazel-bin/mediapipe/graphs/pose_tracking/pose_tracking_cpu_test.binarypb'
-
+# BINARYPB_FILE_PATH = 'mediapipe/modules/pose_landmark/pose_landmark_gpu.binarypb'
+BINARYPB_FILE_PATH = '/home/zj/_github_/folder_python/mediapipe-0.8.3.1/bazel-bin/mediapipe/modules/pose_landmark/pose_landmark_gpu.binarypb'
 UPPER_BODY_POSE_CONNECTIONS = frozenset([
     (PoseLandmark.NOSE, PoseLandmark.RIGHT_EYE_INNER),
     (PoseLandmark.RIGHT_EYE_INNER, PoseLandmark.RIGHT_EYE),
@@ -170,9 +168,9 @@ class Pose(SolutionBase):
                 .ConstantSidePacketCalculatorOptions.ConstantSidePacket(
                     bool_value=not static_image_mode)
             ],
-            'poselandmarkcpu_cputest__posedetectioncpu__TensorsToDetectionsCalculator.min_score_thresh':
+            'poselandmarkGpu__posedetectionGpu__TensorsToDetectionsCalculator.min_score_thresh':
                 min_detection_confidence,
-            'poselandmarkcpu_cputest__poselandmarkbyroicpu__ThresholdingCalculator.threshold':
+            'poselandmarkGpu__poselandmarkbyroiGpu__ThresholdingCalculator.threshold':
                 min_tracking_confidence,
         },
         outputs=['pose_landmarks'])

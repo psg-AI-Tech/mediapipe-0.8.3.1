@@ -53,8 +53,8 @@ cc_library(
 mediapipe_binary_graph(
     name = "pose_tracking_cpu_binary_graph",
     graph = "pose_tracking_cpu.pbtxt",
-    output_name = "pose_tracking_cpu_test.binarypb",
-    # output_name = "pose_tracking_cpu.binarypb",
+    # output_name = "pose_tracking_cpu_test.binarypb",
+    output_name = "pose_tracking_cpu.binarypb",
     deps = [":pose_tracking_cpu_deps"],
 )
 

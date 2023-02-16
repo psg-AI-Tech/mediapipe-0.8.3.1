@@ -31,7 +31,7 @@ node {
 
 # Subgraph that detects poses and corresponding landmarks.
 node {
-  calculator: "PoseLandmarkCpu_test"
+  calculator: "PoseLandmarkCpu"
   input_stream: "IMAGE:throttled_input_video"
   output_stream: "LANDMARKS:pose_landmarks"
   output_stream: "DETECTION:pose_detection"

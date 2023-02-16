@@ -23,7 +23,7 @@
 #     output_stream: "LANDMARKS:pose_landmarks"
 #   }
 
-type: "PoseLandmarkCpu_test"
+type: "PoseLandmarkCpu"
 
 # CPU image. (ImageFrame)
 input_stream: "IMAGE:image"
