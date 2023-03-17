@@ -77,7 +77,7 @@ class PoseLandmark(enum.IntEnum):
   RIGHT_FOOT_INDEX = 32
 
 # BINARYPB_FILE_PATH = 'mediapipe/modules/pose_landmark/pose_landmark_gpu.binarypb'
-BINARYPB_FILE_PATH = '/home/zj/_github_/folder_python/mediapipe-0.8.3.1/bazel-bin/mediapipe/modules/pose_landmark/pose_landmark_gpu.binarypb'
+BINARYPB_FILE_PATH = '/media/zj/4CAC1612AC15F764/_github_/folder_python/mediapipe-0.8.3.1/bazel-bin/mediapipe/modules/pose_landmark/pose_landmark_gpu.binarypb'
 UPPER_BODY_POSE_CONNECTIONS = frozenset([
     (PoseLandmark.NOSE, PoseLandmark.RIGHT_EYE_INNER),
     (PoseLandmark.RIGHT_EYE_INNER, PoseLandmark.RIGHT_EYE),
