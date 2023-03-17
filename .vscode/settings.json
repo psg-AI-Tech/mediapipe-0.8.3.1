@@ -80,5 +80,10 @@
         "locale": "cpp",
         "queue": "cpp",
         "__polyspace__type_traits": "cpp"
+    },
+    "workbench.colorCustomizations": {
+        "activityBar.background": "#023517",
+        "titleBar.activeBackground": "#034B20",
+        "titleBar.activeForeground": "#EDFEF4"
     }
 }
