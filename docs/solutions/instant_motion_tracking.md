@@ -1,8 +1,9 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/solutions/guide#legacy
 title: Instant Motion Tracking
-parent: Solutions
-nav_order: 10
+parent: MediaPipe Legacy Solutions
+nav_order: 11
 ---
 
 # MediaPipe Instant Motion Tracking
@@ -18,6 +19,14 @@ nav_order: 10
 </details>
 ---
 
+**Attention:** *Thank you for your interest in MediaPipe Solutions.
+We have ended support for this MediaPipe Legacy Solution as of March 1, 2023.
+For more information, see the
+[MediaPipe Solutions](https://developers.google.com/mediapipe/solutions/guide#legacy)
+site.*
+
+----
+
 ## Overview
 
 Augmented Reality (AR) technology creates fun, engaging, and immersive user
@@ -30,7 +39,7 @@ platforms without initialization or calibration. It is built upon the
 Tracking, you can easily place virtual 2D and 3D content on static or moving
 surfaces, allowing them to seamlessly interact with the real-world environment.
 
-![instant_motion_tracking_android_small](../images/mobile/instant_motion_tracking_android_small.gif) |
+![instant_motion_tracking_android_small](https://mediapipe.dev/images/mobile/instant_motion_tracking_android_small.gif) |
 :-----------------------------------------------------------------------: |
 *Fig 1. Instant Motion Tracking is used to augment the world with a 3D sticker.* |
 

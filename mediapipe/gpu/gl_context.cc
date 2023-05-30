@@ -23,6 +23,7 @@
 
 #include "absl/base/dynamic_annotations.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/ret_check.h"
@@ -222,6 +223,9 @@ bool GlContext::HasGlExtension(absl::string_view extension) const {
 // to work with GL_EXTENSIONS for newer GL versions, so we must maintain both
 // variations of this function.
 absl::Status GlContext::GetGlExtensions() {
+  // RET_CHECK logs by default, but here we just want to check the precondition;
+  // we'll fall back to the alternative implementation for older versions.
+  RET_CHECK(gl_major_version_ >= 3).SetNoLogging();
   gl_extensions_.clear();
   // glGetStringi only introduced in GL 3.0+; so we exit out this function if
   // we don't have that function defined, regardless of version number reported.
@@ -286,8 +290,15 @@ absl::Status GlContext::FinishInitialization(bool create_thread) {
     // some Emscripten cases), there might be some existing tripped error.
     ForceClearExistingGlErrors();
 
-    absl::string_view version_string(
-        reinterpret_cast<const char*>(glGetString(GL_VERSION)));
+    absl::string_view version_string;
+    const GLubyte* version_string_ptr = glGetString(GL_VERSION);
+    if (version_string_ptr != nullptr) {
+      version_string = reinterpret_cast<const char*>(version_string_ptr);
+    } else {
+      // This may happen when using SwiftShader, but the numeric versions are
+      // available and will be used instead.
+      LOG(WARNING) << "failed to get GL_VERSION string";
+    }
 
     // We will decide later whether we want to use the version numbers we query
     // for, or instead derive that information from the context creation result,
@@ -301,7 +312,7 @@ absl::Status GlContext::FinishInitialization(bool create_thread) {
       glGetIntegerv(GL_MINOR_VERSION, &gl_minor_version_);
     } else {
       // GL_MAJOR_VERSION is not supported on GL versions below 3. We have to
-      // parse the version std::string.
+      // parse the version string.
       if (!ParseGlVersion(version_string, &gl_major_version_,
                           &gl_minor_version_)) {
         LOG(WARNING) << "invalid GL_VERSION format: '" << version_string
@@ -329,20 +340,35 @@ absl::Status GlContext::FinishInitialization(bool create_thread) {
     }
 
     LOG(INFO) << "GL version: " << gl_major_version_ << "." << gl_minor_version_
-              << " (" << glGetString(GL_VERSION) << ")";
-    if (gl_major_version_ >= 3) {
+              << " (" << version_string
+              << "), renderer: " << glGetString(GL_RENDERER);
+
+    {
       auto status = GetGlExtensions();
-      if (status.ok()) {
-        return absl::OkStatus();
+      if (!status.ok()) {
+        status = GetGlExtensionsCompat();
       }
+      MP_RETURN_IF_ERROR(status);
     }
-    return GetGlExtensionsCompat();
+
+#if GL_ES_VERSION_2_0  // This actually means "is GLES available".
+    // No linear float filtering by default, check extensions.
+    can_linear_filter_float_textures_ =
+        HasGlExtension("OES_texture_float_linear") ||
+        HasGlExtension("GL_OES_texture_float_linear");
+#else
+    // Desktop GL should always allow linear filtering.
+    can_linear_filter_float_textures_ = true;
+#endif  // GL_ES_VERSION_2_0
+
+    return absl::OkStatus();
   });
 }
 
 GlContext::GlContext() {}
 
 GlContext::~GlContext() {
+  destructing_ = true;
   // Note: on Apple platforms, this object contains Objective-C objects.
   // The destructor will release them, but ARC must be on.
 #ifdef __OBJC__
@@ -351,17 +377,33 @@ GlContext::~GlContext() {
 #endif
 #endif  // __OBJC__
 
+  auto clear_attachments = [this] {
+    attachments_.clear();
+    if (profiling_helper_) {
+      profiling_helper_->LogAllTimestamps();
+    }
+  };
+
   if (thread_) {
-    auto status = thread_->Run([this] {
-      if (profiling_helper_) {
-        profiling_helper_->LogAllTimestamps();
-      }
+    auto status = thread_->Run([this, clear_attachments] {
+      clear_attachments();
       return ExitContext(nullptr);
     });
     LOG_IF(ERROR, !status.ok())
         << "Failed to deactivate context on thread: " << status;
     if (thread_->IsCurrentThread()) {
       thread_.release()->SelfDestruct();
+    }
+  } else {
+    if (IsCurrent()) {
+      clear_attachments();
+    } else {
+      ContextBinding saved_context;
+      auto status = SwitchContextAndRun([&clear_attachments] {
+        clear_attachments();
+        return absl::OkStatus();
+      });
+      LOG_IF(ERROR, !status.ok()) << status;
     }
   }
   DestroyContext();
@@ -486,6 +528,14 @@ absl::Status GlContext::SwitchContext(ContextBinding* saved_context,
   }
 }
 
+GlContext::ContextBinding GlContext::ThisContextBinding() {
+  GlContext::ContextBinding result = ThisContextBindingPlatform();
+  if (!destructing_) {
+    result.context_object = shared_from_this();
+  }
+  return result;
+}
+
 absl::Status GlContext::EnterContext(ContextBinding* saved_context) {
   DCHECK(HasContext());
   return SwitchContext(saved_context, ThisContextBinding());
@@ -528,20 +578,115 @@ class GlFinishSyncPoint : public GlSyncPoint {
   int64_t gl_finish_count_ = -1;
 };
 
+// Just handles a GLsync. No context management.
+class GlSyncWrapper {
+ public:
+  GlSyncWrapper() : sync_(nullptr) {}
+  explicit GlSyncWrapper(GLsync sync) : sync_(sync) {}
+
+  void Create() {
+    Clear();
+    sync_ = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    // Defer the flush for WebGL until the glClientWaitSync call as it's a
+    // costly IPC call in Chrome's WebGL implementation.
+#ifndef __EMSCRIPTEN__
+    glFlush();
+#endif
+  }
+
+  ~GlSyncWrapper() { Clear(); }
+
+  GlSyncWrapper(const GlSyncWrapper&) = delete;
+  GlSyncWrapper(GlSyncWrapper&& other) : sync_(nullptr) {
+    *this = std::move(other);
+  }
+  GlSyncWrapper& operator=(const GlSyncWrapper&) = delete;
+  GlSyncWrapper& operator=(GlSyncWrapper&& other) {
+    using std::swap;
+    swap(sync_, other.sync_);
+    return *this;
+  }
+  GlSyncWrapper& operator=(std::nullptr_t) {
+    Clear();
+    return *this;
+  }
+
+  operator bool() const { return sync_ != nullptr; }
+  bool operator==(std::nullptr_t) const { return sync_ == nullptr; }
+  bool operator!=(std::nullptr_t) const { return sync_ != nullptr; }
+
+  void Wait() {
+    if (!sync_) return;
+    GLuint flags = 0;
+    uint64_t timeout = std::numeric_limits<uint64_t>::max();
+#ifdef __EMSCRIPTEN__
+    // Setting GL_SYNC_FLUSH_COMMANDS_BIT ensures flush happens before we wait
+    // on the fence. This is necessary since we defer the flush on WebGL.
+    flags = GL_SYNC_FLUSH_COMMANDS_BIT;
+    // WebGL only supports small implementation dependent timeout values. In
+    // particular, Chrome only supports a timeout of 0.
+    timeout = 0;
+#endif
+    GLenum result = glClientWaitSync(sync_, flags, timeout);
+    if (result == GL_ALREADY_SIGNALED || result == GL_CONDITION_SATISFIED) {
+      // TODO: we could clear at this point so later calls are faster,
+      // but we need to do so in a thread-safe way.
+      // Clear();
+    }
+    // TODO: do something if the wait fails?
+  }
+
+  void WaitOnGpu() {
+    if (!sync_) return;
+      // WebGL2 specifies a waitSync call, but since cross-context
+      // synchronization is not supported, it's actually a no-op. Firefox prints
+      // a warning when it's called, so let's just skip the call. See
+      // b/184637485 for details.
+#ifndef __EMSCRIPTEN__
+    glWaitSync(sync_, 0, GL_TIMEOUT_IGNORED);
+#endif
+  }
+
+  bool IsReady() {
+    if (!sync_) return true;
+    GLuint flags = 0;
+#ifdef __EMSCRIPTEN__
+    // Setting GL_SYNC_FLUSH_COMMANDS_BIT ensures flush happens before we wait
+    // on the fence. This is necessary since we defer the flush on WebGL.
+    flags = GL_SYNC_FLUSH_COMMANDS_BIT;
+#endif
+    GLenum result = glClientWaitSync(sync_, flags, 0);
+    if (result == GL_ALREADY_SIGNALED || result == GL_CONDITION_SATISFIED) {
+      // TODO: we could clear at this point so later calls are faster,
+      // but we need to do so in a thread-safe way.
+      // Clear();
+      return true;
+    }
+    return false;
+  }
+
+ private:
+  void Clear() {
+    if (sync_) {
+      glDeleteSync(sync_);
+      sync_ = nullptr;
+    }
+  }
+
+  GLsync sync_;
+};
+
 class GlFenceSyncPoint : public GlSyncPoint {
  public:
   explicit GlFenceSyncPoint(const std::shared_ptr<GlContext>& gl_context)
       : GlSyncPoint(gl_context) {
-    gl_context_->Run([this] {
-      sync_ = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-      glFlush();
-    });
+    gl_context_->Run([this] { sync_.Create(); });
   }
 
   ~GlFenceSyncPoint() {
     if (sync_) {
-      GLsync sync = sync_;
-      gl_context_->RunWithoutWaiting([sync] { glDeleteSync(sync); });
+      gl_context_->RunWithoutWaiting(
+          [sync = new GlSyncWrapper(std::move(sync_))] { delete sync; });
     }
   }
 
@@ -551,46 +696,75 @@ class GlFenceSyncPoint : public GlSyncPoint {
   void Wait() override {
     if (!sync_) return;
     gl_context_->Run([this] {
-      GLenum result =
-          glClientWaitSync(sync_, 0, std::numeric_limits<uint64_t>::max());
-      if (result == GL_ALREADY_SIGNALED || result == GL_CONDITION_SATISFIED) {
-        glDeleteSync(sync_);
-        sync_ = nullptr;
-      }
-      // TODO: do something if the wait fails?
+      // TODO: must this run on the original context??
+      sync_.Wait();
     });
   }
 
   void WaitOnGpu() override {
     if (!sync_) return;
     // TODO: do not wait if we are already on the same context?
-    glWaitSync(sync_, 0, GL_TIMEOUT_IGNORED);
+    sync_.WaitOnGpu();
   }
 
   bool IsReady() override {
     if (!sync_) return true;
     bool ready = false;
     // TODO: we should not block on the original context if possible.
-    gl_context_->Run([this, &ready] {
-      GLenum result = glClientWaitSync(sync_, 0, 0);
-      if (result == GL_ALREADY_SIGNALED || result == GL_CONDITION_SATISFIED) {
-        glDeleteSync(sync_);
-        sync_ = nullptr;
-        ready = true;
-      }
-    });
+    gl_context_->Run([this, &ready] { ready = sync_.IsReady(); });
     return ready;
   }
 
  private:
-  GLsync sync_;
+  GlSyncWrapper sync_;
+};
+
+class GlExternalFenceSyncPoint : public GlSyncPoint {
+ public:
+  // The provided GlContext is used as a fallback when a context is needed (e.g.
+  // for deletion), but it's not the context the sync was created on, so we pass
+  // nullptr to GlSyncPoint.
+  explicit GlExternalFenceSyncPoint(
+      const std::shared_ptr<GlContext>& graph_service_gl_context)
+      : GlSyncPoint(nullptr),
+        graph_service_gl_context_(graph_service_gl_context) {
+    sync_.Create();
+  }
+
+  ~GlExternalFenceSyncPoint() {
+    if (sync_) {
+      graph_service_gl_context_->RunWithoutWaiting(
+          [sync = new GlSyncWrapper(std::move(sync_))] { delete sync; });
+    }
+  }
+
+  GlExternalFenceSyncPoint(const GlExternalFenceSyncPoint&) = delete;
+  GlExternalFenceSyncPoint& operator=(const GlExternalFenceSyncPoint&) = delete;
+
+  void Wait() override {
+    // TODO: can we assume this is always called with a GLContext being current?
+    sync_.Wait();
+  }
+
+  void WaitOnGpu() override { sync_.WaitOnGpu(); }
+
+  bool IsReady() override {
+    // TODO: can we assume this is always called with a GLContext being current?
+    return sync_.IsReady();
+  }
+
+ private:
+  GlSyncWrapper sync_;
+  std::shared_ptr<GlContext> graph_service_gl_context_;
 };
 
 void GlMultiSyncPoint::Add(std::shared_ptr<GlSyncPoint> new_sync) {
-  for (auto& sync : syncs_) {
-    if (sync->GetContext() == new_sync->GetContext()) {
-      sync = std::move(new_sync);
-      return;
+  if (new_sync->GetContext() != nullptr) {
+    for (auto& sync : syncs_) {
+      if (sync->GetContext() == new_sync->GetContext()) {
+        sync = std::move(new_sync);
+        return;
+      }
     }
   }
   syncs_.emplace_back(std::move(new_sync));
@@ -635,28 +809,54 @@ class GlNopSyncPoint : public GlSyncPoint {
 };
 #endif
 
-std::shared_ptr<GlSyncPoint> GlContext::CreateSyncToken() {
-  std::shared_ptr<GlSyncPoint> token;
-#if MEDIAPIPE_DISABLE_GL_SYNC_FOR_DEBUG
-  token.reset(new GlNopSyncPoint(shared_from_this()));
-#else
-
+bool GlContext::ShouldUseFenceSync() const {
 #ifdef __EMSCRIPTEN__
   // In Emscripten the glWaitSync function is non-null depending on linkopts,
   // but only works in a WebGL2 context, so fall back to use Finish if it is a
   // WebGL1/ES2 context.
   // TODO: apply this more generally once b/152794517 is fixed.
-  bool useFenceSync = gl_major_version() > 2;
+  return gl_major_version() > 2;
 #else
-  bool useFenceSync = SymbolAvailable(&glWaitSync);
+  return SymbolAvailable(&glWaitSync);
 #endif  // __EMSCRIPTEN__
-  if (useFenceSync) {
+}
+
+std::shared_ptr<GlSyncPoint> GlContext::CreateSyncToken() {
+  std::shared_ptr<GlSyncPoint> token;
+#if MEDIAPIPE_DISABLE_GL_SYNC_FOR_DEBUG
+  token.reset(new GlNopSyncPoint(shared_from_this()));
+#else
+  if (ShouldUseFenceSync()) {
     token.reset(new GlFenceSyncPoint(shared_from_this()));
   } else {
     token.reset(new GlFinishSyncPoint(shared_from_this()));
   }
 #endif
   return token;
+}
+
+PlatformGlContext GlContext::GetCurrentNativeContext() {
+  ContextBinding ctx;
+  GetCurrentContextBinding(&ctx);
+  return ctx.context;
+}
+
+bool GlContext::IsAnyContextCurrent() {
+  return GetCurrentNativeContext() != kPlatformGlContextNone;
+}
+
+std::shared_ptr<GlSyncPoint>
+GlContext::CreateSyncTokenForCurrentExternalContext(
+    const std::shared_ptr<GlContext>& delegate_graph_context) {
+  CHECK(delegate_graph_context);
+  if (!IsAnyContextCurrent()) return nullptr;
+  if (delegate_graph_context->ShouldUseFenceSync()) {
+    return std::shared_ptr<GlSyncPoint>(
+        new GlExternalFenceSyncPoint(delegate_graph_context));
+  } else {
+    glFinish();
+    return nullptr;
+  }
 }
 
 std::shared_ptr<GlSyncPoint> GlContext::TestOnly_CreateSpecificSyncToken(
@@ -782,7 +982,7 @@ bool GlContext::CheckForGlErrors() { return CheckForGlErrors(false); }
 bool GlContext::CheckForGlErrors(bool force) {
 #if UNSAFE_EMSCRIPTEN_SKIP_GL_ERROR_HANDLING
   if (!force) {
-    LOG_FIRST_N(WARNING, 1) << "MediaPipe OpenGL error checking is disabled";
+    LOG_FIRST_N(WARNING, 1) << "OpenGL error checking is disabled";
     return false;
   }
 #endif
@@ -834,5 +1034,38 @@ const GlTextureInfo& GlTextureInfoForGpuBufferFormat(GpuBufferFormat format,
   CHECK(ctx != nullptr);
   return GlTextureInfoForGpuBufferFormat(format, plane, ctx->GetGlVersion());
 }
+
+void GlContext::SetStandardTextureParams(GLenum target, GLint internal_format) {
+  // Default to using linear filter everywhere. For float32 textures, fall back
+  // to GL_NEAREST if linear filtering unsupported.
+  GLint filter;
+  switch (internal_format) {
+    case GL_R32F:
+    case GL_RG32F:
+    case GL_RGBA32F:
+      // 32F (unlike 16f) textures do not always support texture filtering
+      // (According to OpenGL ES specification [TEXTURE IMAGE SPECIFICATION])
+      filter = can_linear_filter_float_textures_ ? GL_LINEAR : GL_NEAREST;
+      break;
+    default:
+      filter = GL_LINEAR;
+  }
+  glTexParameteri(target, GL_TEXTURE_MIN_FILTER, filter);
+  glTexParameteri(target, GL_TEXTURE_MAG_FILTER, filter);
+  glTexParameteri(target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+}
+
+const GlContext::Attachment<GLuint> kUtilityFramebuffer(
+    [](GlContext&) -> GlContext::Attachment<GLuint>::Ptr {
+      GLuint framebuffer;
+      glGenFramebuffers(1, &framebuffer);
+      if (!framebuffer) return nullptr;
+      return {new GLuint(framebuffer), [](void* ptr) {
+                GLuint* fb = static_cast<GLuint*>(ptr);
+                glDeleteFramebuffers(1, fb);
+                delete fb;
+              }};
+    });
 
 }  // namespace mediapipe

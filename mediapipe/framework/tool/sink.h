@@ -62,9 +62,9 @@ namespace tool {
 // Example usage:
 //   CalculatorGraphConfig config = tool::ParseGraphFromFileOrDie("config.txt");
 //   std::vector<Packet> packet_dump;
-//   tool::AddVectorSink("output_samples", &config, &packet_dump,
-//                       /*use_std_function=*/true);
-//   // Call tool::AddVectorSink() more times if you wish.
+//   tool::AddVectorSink("output_samples", &config, &packet_dump);
+//   // Call tool::AddVectorSink() more times if you wish. Note that each stream
+//   // needs to get its own packet vector.
 //   CalculatorGraph graph;
 //   CHECK_OK(graph.Initialize(config));
 //   // Set other input side packets.
@@ -114,6 +114,12 @@ void AddMultiStreamCallback(
     const std::vector<std::string>& streams,
     std::function<void(const std::vector<Packet>&)> callback,
     CalculatorGraphConfig* config, std::pair<std::string, Packet>* side_packet);
+
+void AddMultiStreamCallback(
+    const std::vector<std::string>& streams,
+    std::function<void(const std::vector<Packet>&)> callback,
+    CalculatorGraphConfig* config, std::map<std::string, Packet>* side_packets,
+    bool observe_timestamp_bounds = false);
 
 // Add a CallbackWithHeaderCalculator to intercept packets sent on
 // stream stream_name, and the header packet on stream stream_header.

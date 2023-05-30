@@ -22,6 +22,7 @@
 #include "mediapipe/framework/formats/image_frame_opencv.h"
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
+#include "mediapipe/framework/port/opencv_imgproc_inc.h"
 #include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/vector.h"
 
@@ -46,6 +47,33 @@ constexpr char kOutputFrameTagGpu[] = "IMAGE_GPU";
 constexpr int kNumChannelsRGBA = 4;
 
 enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
+
+// Combines an RGB cv::Mat and an alpha cv::Mat of the same dimensions into an
+// RGBA cv::Mat. Alpha may be read as uint8 or as another numeric type; in the
+// latter case, it is upscaled to values between 0 and 255 from an assumed input
+// range of [0, 1). Only the first channel of Alpha is used. Input & output Mat
+// must be uchar.
+template <typename AlphaType>
+absl::Status CopyAlphaImage(const cv::Mat& alpha_mat, cv::Mat& output_mat) {
+  RET_CHECK_EQ(output_mat.rows, alpha_mat.rows);
+  RET_CHECK_EQ(output_mat.cols, alpha_mat.cols);
+
+  for (int i = 0; i < output_mat.rows; ++i) {
+    const AlphaType* alpha_ptr = alpha_mat.ptr<AlphaType>(i);
+    uchar* out_ptr = output_mat.ptr<uchar>(i);
+    for (int j = 0; j < output_mat.cols; ++j) {
+      const int out_idx = j * kNumChannelsRGBA;
+      const int alpha_idx = j * alpha_mat.channels();
+      if constexpr (std::is_same<AlphaType, uchar>::value) {
+        out_ptr[out_idx + 3] = alpha_ptr[alpha_idx + 0];  // channel 0 of mask
+      } else {
+        const AlphaType alpha = alpha_ptr[alpha_idx + 0];  // channel 0 of mask
+        out_ptr[out_idx + 3] = static_cast<uchar>(round(alpha * 255.0f));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
 }  // namespace
 
 // A calculator for setting the alpha channel of an RGBA image.
@@ -53,7 +81,7 @@ enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
 // The alpha channel can be set to a single value, or come from an image mask.
 // If the input image has an alpha channel, it will be updated.
 // If the input image doesn't have an alpha channel, one will be added.
-// Adding alpha channel to a Grayscale (single channel) input is not suported.
+// Adding alpha channel to a Grayscale (single channel) input is not supported.
 //
 // Inputs:
 //   One of the following two IMAGE tags:
@@ -238,7 +266,7 @@ absl::Status SetAlphaCalculator::RenderCpu(CalculatorContext* cc) {
 
   // Setup source image
   const auto& input_frame = cc->Inputs().Tag(kInputFrameTag).Get<ImageFrame>();
-  const cv::Mat input_mat = mediapipe::formats::MatView(&input_frame);
+  const cv::Mat input_mat = formats::MatView(&input_frame);
   if (!(input_mat.type() == CV_8UC3 || input_mat.type() == CV_8UC4)) {
     LOG(ERROR) << "Only 3 or 4 channel 8-bit input image supported";
   }
@@ -246,44 +274,38 @@ absl::Status SetAlphaCalculator::RenderCpu(CalculatorContext* cc) {
   // Setup destination image
   auto output_frame = absl::make_unique<ImageFrame>(
       ImageFormat::SRGBA, input_mat.cols, input_mat.rows);
-  cv::Mat output_mat = mediapipe::formats::MatView(output_frame.get());
+  cv::Mat output_mat = formats::MatView(output_frame.get());
 
   const bool has_alpha_mask = cc->Inputs().HasTag(kInputAlphaTag) &&
                               !cc->Inputs().Tag(kInputAlphaTag).IsEmpty();
-  const bool use_alpa_mask = alpha_value_ < 0 && has_alpha_mask;
+  const bool use_alpha_mask = alpha_value_ < 0 && has_alpha_mask;
 
-  // Setup alpha image and Update image in CPU.
-  if (use_alpa_mask) {
+  // Copy rgb part of the image in CPU
+  if (input_mat.channels() == 3) {
+    cv::cvtColor(input_mat, output_mat, cv::COLOR_RGB2RGBA);
+  } else {
+    input_mat.copyTo(output_mat);
+  }
+
+  // Setup alpha image in CPU.
+  if (use_alpha_mask) {
     const auto& alpha_mask = cc->Inputs().Tag(kInputAlphaTag).Get<ImageFrame>();
-    cv::Mat alpha_mat = mediapipe::formats::MatView(&alpha_mask);
-    RET_CHECK_EQ(input_mat.rows, alpha_mat.rows);
-    RET_CHECK_EQ(input_mat.cols, alpha_mat.cols);
+    cv::Mat alpha_mat = formats::MatView(&alpha_mask);
 
-    for (int i = 0; i < output_mat.rows; ++i) {
-      const uchar* in_ptr = input_mat.ptr<uchar>(i);
-      uchar* alpha_ptr = alpha_mat.ptr<uchar>(i);
-      uchar* out_ptr = output_mat.ptr<uchar>(i);
-      for (int j = 0; j < output_mat.cols; ++j) {
-        const int out_idx = j * kNumChannelsRGBA;
-        const int in_idx = j * input_mat.channels();
-        const int alpha_idx = j * alpha_mat.channels();
-        out_ptr[out_idx + 0] = in_ptr[in_idx + 0];
-        out_ptr[out_idx + 1] = in_ptr[in_idx + 1];
-        out_ptr[out_idx + 2] = in_ptr[in_idx + 2];
-        out_ptr[out_idx + 3] = alpha_ptr[alpha_idx + 0];  // channel 0 of mask
-      }
+    const bool alpha_is_float = CV_MAT_DEPTH(alpha_mat.type()) == CV_32F;
+    RET_CHECK(alpha_is_float || CV_MAT_DEPTH(alpha_mat.type()) == CV_8U);
+
+    if (alpha_is_float) {
+      MP_RETURN_IF_ERROR(CopyAlphaImage<float>(alpha_mat, output_mat));
+    } else {
+      MP_RETURN_IF_ERROR(CopyAlphaImage<uchar>(alpha_mat, output_mat));
     }
   } else {
     const uchar alpha_value = std::min(std::max(0.0f, alpha_value_), 255.0f);
     for (int i = 0; i < output_mat.rows; ++i) {
-      const uchar* in_ptr = input_mat.ptr<uchar>(i);
       uchar* out_ptr = output_mat.ptr<uchar>(i);
       for (int j = 0; j < output_mat.cols; ++j) {
         const int out_idx = j * kNumChannelsRGBA;
-        const int in_idx = j * input_mat.channels();
-        out_ptr[out_idx + 0] = in_ptr[in_idx + 0];
-        out_ptr[out_idx + 1] = in_ptr[in_idx + 1];
-        out_ptr[out_idx + 2] = in_ptr[in_idx + 2];
         out_ptr[out_idx + 3] = alpha_value;  // use value from options
       }
     }
@@ -323,7 +345,7 @@ absl::Status SetAlphaCalculator::RenderGpu(CalculatorContext* cc) {
     const auto& alpha_mask =
         cc->Inputs().Tag(kInputAlphaTagGpu).Get<mediapipe::GpuBuffer>();
     auto alpha_texture = gpu_helper_.CreateSourceTexture(alpha_mask);
-    gpu_helper_.BindFramebuffer(output_texture);  // GL_TEXTURE0
+    gpu_helper_.BindFramebuffer(output_texture);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, input_texture.name());
     glActiveTexture(GL_TEXTURE2);
@@ -335,7 +357,7 @@ absl::Status SetAlphaCalculator::RenderGpu(CalculatorContext* cc) {
     glBindTexture(GL_TEXTURE_2D, 0);
     alpha_texture.Release();
   } else {
-    gpu_helper_.BindFramebuffer(output_texture);  // GL_TEXTURE0
+    gpu_helper_.BindFramebuffer(output_texture);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, input_texture.name());
     GlRender(cc);  // use value from options

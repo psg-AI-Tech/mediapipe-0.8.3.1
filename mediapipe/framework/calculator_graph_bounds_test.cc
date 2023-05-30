@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <vector>
+
 #include "absl/strings/str_replace.h"
 #include "mediapipe/framework/calculator_context.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -24,6 +26,7 @@
 #include "mediapipe/framework/port/status_matchers.h"
 #include "mediapipe/framework/thread_pool_executor.h"
 #include "mediapipe/framework/timestamp.h"
+#include "mediapipe/util/packet_test_util.h"
 
 namespace mediapipe {
 namespace {
@@ -306,7 +309,7 @@ REGISTER_CALCULATOR(CustomBoundCalculator);
 TEST(CalculatorGraph, SetNextTimestampBoundPropagation) {
   CalculatorGraph graph;
   CalculatorGraphConfig config =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: 'in'
         input_stream: 'gate'
         node {
@@ -338,7 +341,7 @@ TEST(CalculatorGraph, SetNextTimestampBoundPropagation) {
           input_stream: 'merged'
           output_stream: 'out'
         }
-      )");
+      )pb");
 
   Timestamp timestamp = Timestamp(0);
   auto send_inputs = [&graph, &timestamp](int input, bool pass) {
@@ -431,7 +434,7 @@ TEST(CalculatorGraph, NotAllInputPacketsAtNextTimestampBoundAvailable) {
   //
   CalculatorGraph graph;
   CalculatorGraphConfig config =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: 'in0_unfiltered'
         input_stream: 'in1_to_be_filtered'
         node {
@@ -445,7 +448,7 @@ TEST(CalculatorGraph, NotAllInputPacketsAtNextTimestampBoundAvailable) {
           input_stream: 'in1_filtered'
           output_stream: 'out'
         }
-      )");
+      )pb");
   std::vector<Packet> packet_dump;
   tool::AddVectorSink("out", &config, &packet_dump);
 
@@ -503,7 +506,7 @@ TEST(CalculatorGraph, NotAllInputPacketsAtNextTimestampBoundAvailable) {
 
 TEST(CalculatorGraph, PropagateBoundLoop) {
   CalculatorGraphConfig config =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         node {
           calculator: 'OutputAndBoundSourceCalculator'
           output_stream: 'integers'
@@ -526,7 +529,7 @@ TEST(CalculatorGraph, PropagateBoundLoop) {
           input_stream: 'sum'
           output_stream: 'old_sum'
         }
-      )");
+      )pb");
   std::vector<Packet> packet_dump;
   tool::AddVectorSink("sum", &config, &packet_dump);
 
@@ -549,7 +552,7 @@ TEST(CalculatorGraph, CheckBatchProcessingBoundPropagation) {
   // the sink calculator's input stream should report packet timestamp
   // mismatches.
   CalculatorGraphConfig config =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         node {
           calculator: 'OutputAndBoundSourceCalculator'
           output_stream: 'integers'
@@ -568,7 +571,7 @@ TEST(CalculatorGraph, CheckBatchProcessingBoundPropagation) {
           }
         }
         node { calculator: 'IntSinkCalculator' input_stream: 'output' }
-      )");
+      )pb");
   CalculatorGraph graph;
   MP_ASSERT_OK(graph.Initialize(config));
   MP_ASSERT_OK(graph.Run());
@@ -581,7 +584,7 @@ TEST(CalculatorGraphBoundsTest, ImmediateHandlerBounds) {
   // The second PassthroughCalculator delivers an output packet whenever the
   // first PassThroughCalculator delivers a timestamp bound.
   CalculatorGraphConfig config =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: 'input'
         node {
           calculator: 'CustomBoundCalculator'
@@ -603,7 +606,7 @@ TEST(CalculatorGraphBoundsTest, ImmediateHandlerBounds) {
           output_stream: 'bounds_output'
           output_stream: 'output'
         }
-      )");
+      )pb");
   CalculatorGraph graph;
   std::vector<Packet> output_packets;
   MP_ASSERT_OK(graph.Initialize(config));
@@ -676,7 +679,7 @@ REGISTER_CALCULATOR(BoundToPacketCalculator);
 // A Calculator that produces packets at timestamps beyond the input timestamp.
 class FuturePacketCalculator : public CalculatorBase {
  public:
-  static constexpr int64 kOutputFutureMicros = 3;
+  static constexpr int64_t kOutputFutureMicros = 3;
 
   static absl::Status GetContract(CalculatorContract* cc) {
     cc->Inputs().Index(0).Set<int>();
@@ -703,7 +706,7 @@ TEST(CalculatorGraphBoundsTest, OffsetBoundPropagation) {
   // The PassThroughCalculator delivers an output packet whenever the
   // OffsetBoundCalculator delivers a timestamp bound.
   CalculatorGraphConfig config =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: 'input'
         node {
           calculator: 'OffsetBoundCalculator'
@@ -717,7 +720,7 @@ TEST(CalculatorGraphBoundsTest, OffsetBoundPropagation) {
           output_stream: 'bounds_output'
           output_stream: 'output'
         }
-      )");
+      )pb");
   CalculatorGraph graph;
   std::vector<Packet> output_packets;
   MP_ASSERT_OK(graph.Initialize(config));
@@ -751,7 +754,7 @@ TEST(CalculatorGraphBoundsTest, BoundWithoutInputPackets) {
   // The BoundToPacketCalculator delivers an output packet whenever the
   // OffsetBoundCalculator delivers a timestamp bound.
   CalculatorGraphConfig config =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: 'input'
         node {
           calculator: 'FuturePacketCalculator'
@@ -768,7 +771,7 @@ TEST(CalculatorGraphBoundsTest, BoundWithoutInputPackets) {
           input_stream: 'bounds'
           output_stream: 'output'
         }
-      )");
+      )pb");
   CalculatorGraph graph;
   std::vector<Packet> output_packets;
   MP_ASSERT_OK(graph.Initialize(config));
@@ -809,7 +812,7 @@ TEST(CalculatorGraphBoundsTest, FixedSizeHandlerBounds) {
   // The PassthroughCalculator delivers an output packet whenever the
   // LambdaCalculator delivers a timestamp bound.
   CalculatorGraphConfig config =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: 'input'
         input_side_packet: 'open_function'
         input_side_packet: 'process_function'
@@ -830,7 +833,7 @@ TEST(CalculatorGraphBoundsTest, FixedSizeHandlerBounds) {
           output_stream: 'thinned_output'
           output_stream: 'output'
         }
-      )");
+      )pb");
   CalculatorGraph graph;
 
   // The task_semaphore counts the number of running tasks.
@@ -951,7 +954,7 @@ TEST(CalculatorGraphBoundsTest, LastPacketCheck) {
   // packet or input stream close.  The output "last_output" shows the
   // last packet, and "output" shows the timestamp bounds.
   CalculatorGraphConfig config =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: 'input'
         output_stream: 'output'
         output_stream: 'last_output'
@@ -972,7 +975,7 @@ TEST(CalculatorGraphBoundsTest, LastPacketCheck) {
           output_stream: 'output'
           output_stream: 'last_output'
         }
-      )");
+      )pb");
   CalculatorGraph graph;
   std::vector<Packet> output_packets;
   MP_ASSERT_OK(graph.Initialize(config));
@@ -1361,6 +1364,38 @@ TEST(CalculatorGraphBoundsTest, ProcessTimestampBounds_Passthrough) {
   MP_ASSERT_OK(graph.WaitUntilDone());
 }
 
+TEST(CalculatorGraphBoundsTest, PostStreamPacketToSetProcessTimestampBound) {
+  std::string config_str = R"(
+            input_stream: "input_0"
+            node {
+              calculator: "ProcessBoundToPacketCalculator"
+              input_stream: "input_0"
+              output_stream: "output_0"
+            }
+          )";
+  CalculatorGraphConfig config =
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(config_str);
+  CalculatorGraph graph;
+  std::vector<Packet> output_0_packets;
+  MP_ASSERT_OK(graph.Initialize(config));
+  MP_ASSERT_OK(graph.ObserveOutputStream("output_0", [&](const Packet& p) {
+    output_0_packets.push_back(p);
+    return absl::OkStatus();
+  }));
+  MP_ASSERT_OK(graph.StartRun({}));
+  MP_ASSERT_OK(graph.WaitUntilIdle());
+
+  MP_ASSERT_OK(graph.AddPacketToInputStream(
+      "input_0", MakePacket<int>(0).At(Timestamp::PostStream())));
+  MP_ASSERT_OK(graph.WaitUntilIdle());
+  EXPECT_EQ(output_0_packets.size(), 1);
+  EXPECT_EQ(output_0_packets[0].Timestamp(), Timestamp::PostStream());
+
+  // Shutdown the graph.
+  MP_ASSERT_OK(graph.CloseAllPacketSources());
+  MP_ASSERT_OK(graph.WaitUntilDone());
+}
+
 // A Calculator that sends a timestamp bound for every other input.
 class OccasionalBoundCalculator : public CalculatorBase {
  public:
@@ -1480,6 +1515,262 @@ TEST(CalculatorGraphBoundsTest, OffsetAndBound) {
   // Only bounds arrive.
   MP_ASSERT_OK(graph.WaitUntilIdle());
   EXPECT_EQ(output_0_packets.size(), 0);
+
+  // Shutdown the graph.
+  MP_ASSERT_OK(graph.CloseAllPacketSources());
+  MP_ASSERT_OK(graph.WaitUntilDone());
+}
+
+// A Calculator that sends empty output stream packets.
+class EmptyPacketCalculator : public CalculatorBase {
+ public:
+  static absl::Status GetContract(CalculatorContract* cc) {
+    cc->Inputs().Index(0).Set<int>();
+    cc->Outputs().Index(0).SetSameAs(&cc->Inputs().Index(0));
+    return absl::OkStatus();
+  }
+  absl::Status Open(CalculatorContext* cc) final { return absl::OkStatus(); }
+  absl::Status Process(CalculatorContext* cc) final {
+    if (cc->InputTimestamp().Value() % 2 == 0) {
+      cc->Outputs().Index(0).AddPacket(Packet().At(cc->InputTimestamp()));
+    }
+    return absl::OkStatus();
+  }
+};
+REGISTER_CALCULATOR(EmptyPacketCalculator);
+
+// This test shows that an output timestamp bound can be specified by outputting
+// an empty packet with a settled timestamp.
+TEST(CalculatorGraphBoundsTest, EmptyPacketOutput) {
+  // OffsetAndBoundCalculator runs on parallel threads and sends ts
+  // occasionally.
+  std::string config_str = R"(
+            input_stream: "input_0"
+            node {
+              calculator: "EmptyPacketCalculator"
+              input_stream: "input_0"
+              output_stream: "empty_0"
+            }
+            node {
+              calculator: "ProcessBoundToPacketCalculator"
+              input_stream: "empty_0"
+              output_stream: "output_0"
+            }
+          )";
+  CalculatorGraphConfig config =
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(config_str);
+  CalculatorGraph graph;
+  std::vector<Packet> output_0_packets;
+  MP_ASSERT_OK(graph.Initialize(config));
+  MP_ASSERT_OK(graph.ObserveOutputStream("output_0", [&](const Packet& p) {
+    output_0_packets.push_back(p);
+    return absl::OkStatus();
+  }));
+  MP_ASSERT_OK(graph.StartRun({}));
+  MP_ASSERT_OK(graph.WaitUntilIdle());
+
+  // Send in packets.
+  for (int i = 0; i < 9; ++i) {
+    const int ts = 10 + i * 10;
+    Packet p = MakePacket<int>(i).At(Timestamp(ts));
+    MP_ASSERT_OK(graph.AddPacketToInputStream("input_0", p));
+    MP_ASSERT_OK(graph.WaitUntilIdle());
+  }
+
+  // 9 empty packets are converted to bounds and then to packets.
+  EXPECT_EQ(output_0_packets.size(), 9);
+  for (int i = 0; i < 9; ++i) {
+    EXPECT_EQ(output_0_packets[i].Timestamp(), Timestamp(10 + i * 10));
+  }
+
+  // Shut down the graph.
+  MP_ASSERT_OK(graph.CloseAllPacketSources());
+  MP_ASSERT_OK(graph.WaitUntilDone());
+}
+
+// This test shows that input timestamp bounds can be specified using
+// CalculatorGraph::SetInputStreamTimestampBound.
+TEST(CalculatorGraphBoundsTest, SetInputStreamTimestampBound) {
+  std::string config_str = R"(
+            input_stream: "input_0"
+            node {
+              calculator: "ProcessBoundToPacketCalculator"
+              input_stream: "input_0"
+              output_stream: "output_0"
+            }
+          )";
+  CalculatorGraphConfig config =
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(config_str);
+  CalculatorGraph graph;
+  std::vector<Packet> output_0_packets;
+  MP_ASSERT_OK(graph.Initialize(config));
+  MP_ASSERT_OK(graph.ObserveOutputStream("output_0", [&](const Packet& p) {
+    output_0_packets.push_back(p);
+    return absl::OkStatus();
+  }));
+  MP_ASSERT_OK(graph.StartRun({}));
+  MP_ASSERT_OK(graph.WaitUntilIdle());
+
+  // Send in timestamp bounds.
+  for (int i = 0; i < 9; ++i) {
+    const int ts = 10 + i * 10;
+    MP_ASSERT_OK(graph.SetInputStreamTimestampBound(
+        "input_0", Timestamp(ts).NextAllowedInStream()));
+    MP_ASSERT_OK(graph.WaitUntilIdle());
+  }
+
+  // 9 timestamp bounds are converted to packets.
+  EXPECT_EQ(output_0_packets.size(), 9);
+  for (int i = 0; i < 9; ++i) {
+    EXPECT_EQ(output_0_packets[i].Timestamp(), Timestamp(10 + i * 10));
+  }
+
+  // Shutdown the graph.
+  MP_ASSERT_OK(graph.CloseAllPacketSources());
+  MP_ASSERT_OK(graph.WaitUntilDone());
+}
+
+// This test shows how an input stream with infrequent packets, such as
+// configuration protobufs, can be consumed while processing more frequent
+// packets, such as video frames.
+TEST(CalculatorGraphBoundsTest, TimestampBoundsForInfrequentInput) {
+  // PassThroughCalculator consuming two input streams, with default ISH.
+  std::string config_str = R"pb(
+    input_stream: "INFREQUENT:config"
+    input_stream: "FREQUENT:frame"
+    node {
+      calculator: "PassThroughCalculator"
+      input_stream: "CONFIG:config"
+      input_stream: "VIDEO:frame"
+      output_stream: "VIDEO:output_frame"
+      output_stream: "CONFIG:output_config"
+    }
+  )pb";
+
+  CalculatorGraphConfig config =
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(config_str);
+  CalculatorGraph graph;
+  std::vector<Packet> frame_packets;
+  MP_ASSERT_OK(graph.Initialize(config));
+  MP_ASSERT_OK(graph.ObserveOutputStream(
+      "output_frame",
+      [&](const Packet& p) {
+        frame_packets.push_back(p);
+        return absl::OkStatus();
+      },
+      /*observe_bound_updates=*/true));
+  std::vector<Packet> config_packets;
+  MP_ASSERT_OK(graph.ObserveOutputStream(
+      "output_config",
+      [&](const Packet& p) {
+        config_packets.push_back(p);
+        return absl::OkStatus();
+      },
+      /*observe_bound_updates=*/true));
+  MP_ASSERT_OK(graph.StartRun({}));
+  MP_ASSERT_OK(graph.WaitUntilIdle());
+
+  // Utility functions to send packets or timestamp bounds.
+  auto send_fn = [&](std::string stream, std::string value, int ts) {
+    MP_ASSERT_OK(graph.AddPacketToInputStream(
+        stream,
+        MakePacket<std::string>(absl::StrCat(value)).At(Timestamp(ts))));
+    MP_ASSERT_OK(graph.WaitUntilIdle());
+  };
+  auto bound_fn = [&](std::string stream, int ts) {
+    MP_ASSERT_OK(graph.SetInputStreamTimestampBound(stream, Timestamp(ts)));
+    MP_ASSERT_OK(graph.WaitUntilIdle());
+  };
+
+  // Send in a frame packet.
+  send_fn("frame", "frame_0", 0);
+  // The frame is not processed yet.
+  EXPECT_THAT(frame_packets, ElementsAreArray(PacketMatchers<std::string>({})));
+  bound_fn("config", 10000);
+  // The frame is processed after a fresh config timestamp bound arrives.
+  EXPECT_THAT(frame_packets,
+              ElementsAreArray(PacketMatchers<std::string>({
+                  MakePacket<std::string>("frame_0").At(Timestamp(0)),
+              })));
+
+  // Send in a frame packet.
+  send_fn("frame", "frame_1", 20000);
+  // The frame is not processed yet.
+  // The PassThroughCalculator with TimestampOffset 0 now propagates
+  // Timestamp bound 10000 to both "output_frame" and "output_config",
+  // which appears here as Packet().At(Timestamp(9999).  The timestamp
+  // bounds at 29999 and 50000 are propagated similarly.
+  EXPECT_THAT(frame_packets,
+              ElementsAreArray(PacketMatchers<std::string>({
+                  MakePacket<std::string>("frame_0").At(Timestamp(0)),
+                  Packet().At(Timestamp(9999)),
+              })));
+  bound_fn("config", 30000);
+  // The frame is processed after a fresh config timestamp bound arrives.
+  EXPECT_THAT(frame_packets,
+              ElementsAreArray(PacketMatchers<std::string>({
+                  MakePacket<std::string>("frame_0").At(Timestamp(0)),
+                  Packet().At(Timestamp(9999)),
+                  MakePacket<std::string>("frame_1").At(Timestamp(20000)),
+              })));
+
+  // Send in a frame packet.
+  send_fn("frame", "frame_2", 40000);
+  // The frame is not processed yet.
+  EXPECT_THAT(frame_packets,
+              ElementsAreArray(PacketMatchers<std::string>({
+                  MakePacket<std::string>("frame_0").At(Timestamp(0)),
+                  Packet().At(Timestamp(9999)),
+                  MakePacket<std::string>("frame_1").At(Timestamp(20000)),
+                  Packet().At(Timestamp(29999)),
+              })));
+  send_fn("config", "config_1", 50000);
+  // The frame is processed after a fresh config arrives.
+  EXPECT_THAT(frame_packets,
+              ElementsAreArray(PacketMatchers<std::string>({
+                  MakePacket<std::string>("frame_0").At(Timestamp(0)),
+                  Packet().At(Timestamp(9999)),
+                  MakePacket<std::string>("frame_1").At(Timestamp(20000)),
+                  Packet().At(Timestamp(29999)),
+                  MakePacket<std::string>("frame_2").At(Timestamp(40000)),
+              })));
+
+  // Send in a frame packet.
+  send_fn("frame", "frame_3", 60000);
+  // The frame is not processed yet.
+  EXPECT_THAT(frame_packets,
+              ElementsAreArray(PacketMatchers<std::string>({
+                  MakePacket<std::string>("frame_0").At(Timestamp(0)),
+                  Packet().At(Timestamp(9999)),
+                  MakePacket<std::string>("frame_1").At(Timestamp(20000)),
+                  Packet().At(Timestamp(29999)),
+                  MakePacket<std::string>("frame_2").At(Timestamp(40000)),
+                  Packet().At(Timestamp(50000)),
+              })));
+  bound_fn("config", 70000);
+  // The frame is processed after a fresh config timestamp bound arrives.
+  EXPECT_THAT(frame_packets,
+              ElementsAreArray(PacketMatchers<std::string>({
+                  MakePacket<std::string>("frame_0").At(Timestamp(0)),
+                  Packet().At(Timestamp(9999)),
+                  MakePacket<std::string>("frame_1").At(Timestamp(20000)),
+                  Packet().At(Timestamp(29999)),
+                  MakePacket<std::string>("frame_2").At(Timestamp(40000)),
+                  Packet().At(Timestamp(50000)),
+                  MakePacket<std::string>("frame_3").At(Timestamp(60000)),
+              })));
+
+  // One config packet is deleivered.
+  EXPECT_THAT(config_packets,
+              ElementsAreArray(PacketMatchers<std::string>({
+                  Packet().At(Timestamp(0)),
+                  Packet().At(Timestamp(9999)),
+                  Packet().At(Timestamp(20000)),
+                  Packet().At(Timestamp(29999)),
+                  Packet().At(Timestamp(40000)),
+                  MakePacket<std::string>("config_1").At(Timestamp(50000)),
+                  Packet().At(Timestamp(60000)),
+              })));
 
   // Shutdown the graph.
   MP_ASSERT_OK(graph.CloseAllPacketSources());

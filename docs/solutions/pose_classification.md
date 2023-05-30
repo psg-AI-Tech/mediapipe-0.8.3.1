@@ -1,8 +1,9 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/solutions/vision/pose_landmarker/
 title: Pose Classification
 parent: Pose
-grand_parent: Solutions
+grand_parent: MediaPipe Legacy Solutions
 nav_order: 1
 ---
 
@@ -19,18 +20,27 @@ nav_order: 1
 </details>
 ---
 
+**Attention:** *Thank you for your interest in MediaPipe Solutions.
+As of March 1, 2023, this solution is planned to be upgraded to a new MediaPipe
+Solution. For more information, see the
+[MediaPipe Solutions](https://developers.google.com/mediapipe/solutions/vision/pose_landmarker/)
+site.*
+
+----
+
 ## Overview
 
 One of the applications
 [BlazePose](https://ai.googleblog.com/2020/08/on-device-real-time-body-pose-tracking.html)
 can enable is fitness. More specifically - pose classification and repetition
 counting. In this section we'll provide basic guidance on building a custom pose
-classifier with the help of [Colabs](#colabs) and wrap it in a simple
-[fitness app](https://mediapipe.page.link/mlkit-pose-classification-demo-app)
-powered by [ML Kit](https://developers.google.com/ml-kit). Push-ups and squats
-are used for demonstration purposes as the most common exercises.
+classifier with the help of [Colabs](#colabs) and wrap it in a simple fitness
+demo within
+[ML Kit quickstart app](https://developers.google.com/ml-kit/vision/pose-detection/classifying-poses#4_integrate_with_the_ml_kit_quickstart_app).
+Push-ups and squats are used for demonstration purposes as the most common
+exercises.
 
-![pose_classification_pushups_and_squats.gif](../images/mobile/pose_classification_pushups_and_squats.gif) |
+![pose_classification_pushups_and_squats.gif](https://mediapipe.dev/images/mobile/pose_classification_pushups_and_squats.gif) |
 :--------------------------------------------------------------------------------------------------------: |
 *Fig 1. Pose classification and repetition counting with MediaPipe Pose.*                                  |
 
@@ -47,7 +57,7 @@ determines the object's class based on the closest samples in the training set.
     classifier and form a training set using these [Colabs](#colabs),
 3.  Perform the classification itself followed by repetition counting (e.g., in
     the
-    [ML Kit demo app](https://mediapipe.page.link/mlkit-pose-classification-demo-app)).
+    [ML Kit quickstart app](https://developers.google.com/ml-kit/vision/pose-detection/classifying-poses#4_integrate_with_the_ml_kit_quickstart_app)).
 
 ## Training Set
 
@@ -57,7 +67,7 @@ exercise (e.g., "up" and "down" positions for push-ups). It's important that
 collected samples cover different camera angles, environment conditions, body
 shapes, and exercise variations.
 
-![pose_classification_pushups_un_and_down_samples.jpg](../images/mobile/pose_classification_pushups_un_and_down_samples.jpg) |
+![pose_classification_pushups_un_and_down_samples.jpg](https://mediapipe.dev/images/mobile/pose_classification_pushups_un_and_down_samples.jpg) |
 :--------------------------------------------------------------------------------------------------------------------------: |
 *Fig 2. Two terminal states of push-ups.*                                                                                    |
 
@@ -76,7 +86,7 @@ video right in the Colab.
 
 Code of the classifier is available both in the
 [`Pose Classification Colab (Extended)`] and in the
-[ML Kit demo app](https://mediapipe.page.link/mlkit-pose-classification-demo-app).
+[ML Kit quickstart app](https://developers.google.com/ml-kit/vision/pose-detection/classifying-poses#4_integrate_with_the_ml_kit_quickstart_app).
 Please refer to them for details of the approach described below.
 
 The k-NN algorithm used for pose classification requires a feature vector
@@ -89,7 +99,7 @@ ankle and hip, and two wrists. Since the algorithm relies on distances, all
 poses are normalized to have the same torso size and vertical torso orientation
 before the conversion.
 
-![pose_classification_pairwise_distances.png](../images/mobile/pose_classification_pairwise_distances.png) |
+![pose_classification_pairwise_distances.png](https://mediapipe.dev/images/mobile/pose_classification_pairwise_distances.png) |
 :--------------------------------------------------------------------------------------------------------: |
 *Fig 3. Main pairwise distances used for the pose feature vector.*                                         |
 
@@ -127,11 +137,13 @@ where the pose class and the counter can't be changed.
 
 ## Future Work
 
-We are actively working on improving BlazePose GHUM 3D's Z prediction. It will
-allow us to use joint angles in the feature vectors, which are more natural and
-easier to configure (although distances can still be useful to detect touches
-between body parts) and to perform rotation normalization of poses and reduce
-the number of camera angles required for accurate k-NN classification.
+We are actively working on improving
+[BlazePose GHUM 3D](./pose.md#pose-landmark-model-blazepose-ghum-3d)'s Z
+prediction. It will allow us to use joint angles in the feature vectors, which
+are more natural and easier to configure (although distances can still be useful
+to detect touches between body parts) and to perform rotation normalization of
+poses and reduce the number of camera angles required for accurate k-NN
+classification.
 
 ## Colabs
 

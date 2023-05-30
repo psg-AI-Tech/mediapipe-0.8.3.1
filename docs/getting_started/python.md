@@ -1,5 +1,6 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/
 title: MediaPipe in Python
 parent: Getting Started
 has_children: true
@@ -14,6 +15,12 @@ nav_order: 3
 {:toc}
 ---
 
+**Attention:** *Thanks for your interest in MediaPipe! We have moved to
+[https://developers.google.com/mediapipe](https://developers.google.com/mediapipe)
+as the primary developer documentation site for MediaPipe as of April 3, 2023.*
+
+----
+
 ## Ready-to-use Python Solutions
 
 MediaPipe offers ready-to-use yet customizable Python solutions as a prebuilt
@@ -26,7 +33,7 @@ You can, for instance, activate a Python virtual environment:
 $ python3 -m venv mp_env && source mp_env/bin/activate
 ```
 
-Install MediaPipe Python package and start Python intepreter:
+Install MediaPipe Python package and start Python interpreter:
 
 ```bash
 (mp_env)$ pip install mediapipe
@@ -51,6 +58,7 @@ details in each solution via the links below:
 *   [MediaPipe Holistic](../solutions/holistic#python-solution-api)
 *   [MediaPipe Objectron](../solutions/objectron#python-solution-api)
 *   [MediaPipe Pose](../solutions/pose#python-solution-api)
+*   [MediaPipe Selfie Segmentation](../solutions/selfie_segmentation#python-solution-api)
 
 ## MediaPipe on Google Colab
 
@@ -62,6 +70,7 @@ details in each solution via the links below:
 *   [MediaPipe Pose Colab](https://mediapipe.page.link/pose_py_colab)
 *   [MediaPipe Pose Classification Colab (Basic)](https://mediapipe.page.link/pose_classification_basic)
 *   [MediaPipe Pose Classification Colab (Extended)](https://mediapipe.page.link/pose_classification_extended)
+*   [MediaPipe Selfie Segmentation Colab](https://mediapipe.page.link/selfie_segmentation_py_colab)
 
 ## MediaPipe Python Framework
 
@@ -111,9 +120,8 @@ Nvidia Jetson and Raspberry Pi, please read
 
     Download the latest protoc win64 zip from
     [the Protobuf GitHub repo](https://github.com/protocolbuffers/protobuf/releases),
-    unzip the file, and copy the protoc.exe executable to a preferred
-    location. Please ensure that location is added into the Path environment
-    variable.
+    unzip the file, and copy the protoc.exe executable to a preferred location.
+    Please ensure that location is added into the Path environment variable.
 
 3.  Activate a Python virtual environment.
 
@@ -129,16 +137,15 @@ Nvidia Jetson and Raspberry Pi, please read
     (mp_env)mediapipe$ pip3 install -r requirements.txt
     ```
 
-6.  Generate and install MediaPipe package.
+6.  Build and install MediaPipe package.
 
     ```bash
-    (mp_env)mediapipe$ python3 setup.py gen_protos
     (mp_env)mediapipe$ python3 setup.py install --link-opencv
     ```
 
     or
 
     ```bash
-    (mp_env)mediapipe$ python3 setup.py gen_protos
     (mp_env)mediapipe$ python3 setup.py bdist_wheel
     ```
+7. Exit from the MediaPipe repo directory and launch the Python interpreter.

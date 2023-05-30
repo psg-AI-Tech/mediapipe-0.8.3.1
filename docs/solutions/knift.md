@@ -1,8 +1,9 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/solutions/guide#legacy
 title: KNIFT (Template-based Feature Matching)
-parent: Solutions
-nav_order: 12
+parent: MediaPipe Legacy Solutions
+nav_order: 13
 ---
 
 # MediaPipe KNIFT
@@ -18,12 +19,20 @@ nav_order: 12
 </details>
 ---
 
+**Attention:** *Thank you for your interest in MediaPipe Solutions.
+We have ended support for this MediaPipe Legacy Solution as of March 1, 2023.
+For more information, see the
+[MediaPipe Solutions](https://developers.google.com/mediapipe/solutions/guide#legacy)
+site.*
+
+----
+
 ## Overview
 
 MediaPipe KNIFT is a template-based feature matching solution using KNIFT
 (Keypoint Neural Invariant Feature Transform).
 
-![knift_stop_sign.gif](../images/knift_stop_sign.gif)                     |
+![knift_stop_sign.gif](https://mediapipe.dev/images/knift_stop_sign.gif)                     |
 :-----------------------------------------------------------------------: |
 *Fig 1. Matching a real Stop Sign with a Stop Sign template using KNIFT.* |
 
@@ -56,7 +65,7 @@ For more information, please see
 [MediaPipe KNIFT: Template-based feature matching](https://developers.googleblog.com/2020/04/mediapipe-knift-template-based-feature-matching.html)
 in Google Developers Blog.
 
-![template_matching_mobile_cpu.gif](../images/mobile/template_matching_android_cpu.gif) |
+![template_matching_mobile_cpu.gif](https://mediapipe.dev/images/mobile/template_matching_android_cpu.gif) |
 :-------------------------------------------------------------------------------------: |
 *Fig 2. Matching US dollar bills using KNIFT.*                                          |
 
@@ -70,7 +79,7 @@ pre-computed from the 3 template images (of US dollar bills) shown below. If
 you'd like to use your own template images, see
 [Matching Your Own Template Images](#matching-your-own-template-images).
 
-![template_matching_mobile_template.jpg](../images/mobile/template_matching_mobile_template.jpg)
+![template_matching_mobile_template.jpg](https://mediapipe.dev/images/mobile/template_matching_mobile_template.jpg)
 
 Please first see general instructions for
 [Android](../getting_started/android.md) on how to build MediaPipe examples.

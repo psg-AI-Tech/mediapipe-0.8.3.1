@@ -75,6 +75,7 @@ alias(
     actual = select({
         ":macos_i386": ":macos_i386",
         ":macos_x86_64": ":macos_x86_64",
+        ":macos_arm64": ":macos_arm64",
         "//conditions:default": ":macos_i386",  # Arbitrarily chosen from above.
     }),
     visibility = ["//visibility:public"],
@@ -119,6 +120,15 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "macos_arm64",
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_arm64",
+    },
+    visibility = ["//visibility:public"],
+)
+
 [
     config_setting(
         name = arch,
@@ -131,6 +141,7 @@ config_setting(
         "ios_armv7",
         "ios_arm64",
         "ios_arm64e",
+        "ios_sim_arm64",
     ]
 ]
 

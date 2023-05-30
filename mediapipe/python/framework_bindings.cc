@@ -1,4 +1,4 @@
-// Copyright 2020 The MediaPipe Authors.
+// Copyright 2020-2021 The MediaPipe Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "mediapipe/python/pybind/calculator_graph.h"
+#include "mediapipe/python/pybind/image.h"
 #include "mediapipe/python/pybind/image_frame.h"
 #include "mediapipe/python/pybind/matrix.h"
 #include "mediapipe/python/pybind/packet.h"
@@ -21,12 +22,14 @@
 #include "mediapipe/python/pybind/resource_util.h"
 #include "mediapipe/python/pybind/timestamp.h"
 #include "mediapipe/python/pybind/validated_graph_config.h"
+#include "mediapipe/tasks/python/core/pybind/task_runner.h"
 
 namespace mediapipe {
 namespace python {
 
 PYBIND11_MODULE(_framework_bindings, m) {
   ResourceUtilSubmodule(&m);
+  ImageSubmodule(&m);
   ImageFrameSubmodule(&m);
   MatrixSubmodule(&m);
   TimestampSubmodule(&m);
@@ -35,6 +38,10 @@ PYBIND11_MODULE(_framework_bindings, m) {
   PacketGetterSubmodule(&m);
   CalculatorGraphSubmodule(&m);
   ValidatedGraphConfigSubmodule(&m);
+  // As all MediaPipe calculators and Python bindings need to go into a single
+  // .so file, having MediaPipe Tasks' task runner module in _framework_bindings
+  // as well.
+  tasks::python::TaskRunnerSubmodule(&m);
 }
 
 }  // namespace python

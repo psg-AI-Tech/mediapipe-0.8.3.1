@@ -46,10 +46,10 @@ MEDIAPIPE_REGISTER_NODE(ConcatenateFloatVectorCalculator);
 //   input_stream: "int32_vector_2"
 //   output_stream: "concatenated_int32_vector"
 // }
-typedef ConcatenateVectorCalculator<int32> ConcatenateInt32VectorCalculator;
+typedef ConcatenateVectorCalculator<int32_t> ConcatenateInt32VectorCalculator;
 MEDIAPIPE_REGISTER_NODE(ConcatenateInt32VectorCalculator);
 
-typedef ConcatenateVectorCalculator<uint64> ConcatenateUInt64VectorCalculator;
+typedef ConcatenateVectorCalculator<uint64_t> ConcatenateUInt64VectorCalculator;
 MEDIAPIPE_REGISTER_NODE(ConcatenateUInt64VectorCalculator);
 
 typedef ConcatenateVectorCalculator<bool> ConcatenateBoolVectorCalculator;
@@ -73,8 +73,17 @@ typedef ConcatenateVectorCalculator<::mediapipe::NormalizedLandmark>
     ConcatenateLandmarkVectorCalculator;
 MEDIAPIPE_REGISTER_NODE(ConcatenateLandmarkVectorCalculator);
 
+typedef ConcatenateVectorCalculator<::mediapipe::LandmarkList>
+    ConcatenateLandmarkListVectorCalculator;
+MEDIAPIPE_REGISTER_NODE(ConcatenateLandmarkListVectorCalculator);
+
 typedef ConcatenateVectorCalculator<::mediapipe::NormalizedLandmarkList>
-    ConcatenateLandmarListVectorCalculator;
+    ConcatenateNormalizedLandmarkListVectorCalculator;
+MEDIAPIPE_REGISTER_NODE(ConcatenateNormalizedLandmarkListVectorCalculator);
+
+// For backwards compatibility, keep the version with the typo.
+using ConcatenateLandmarListVectorCalculator =
+    ConcatenateNormalizedLandmarkListVectorCalculator;
 MEDIAPIPE_REGISTER_NODE(ConcatenateLandmarListVectorCalculator);
 
 typedef ConcatenateVectorCalculator<mediapipe::ClassificationList>

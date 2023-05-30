@@ -1,4 +1,4 @@
-# Copyright 2020 The MediaPipe Authors.
+# Copyright 2020-2021 The MediaPipe Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ from typing import List, Tuple, NamedTuple, Optional
 import attr
 import numpy as np
 
-from mediapipe.calculators.core import constant_side_packet_calculator_pb2
 # pylint: disable=unused-import
+from mediapipe.calculators.core import constant_side_packet_calculator_pb2
 from mediapipe.calculators.core import gate_calculator_pb2
 from mediapipe.calculators.core import split_vector_calculator_pb2
 from mediapipe.calculators.tensor import image_to_tensor_calculator_pb2
@@ -45,6 +45,7 @@ from mediapipe.modules.objectron.calculators import frame_annotation_to_rect_cal
 from mediapipe.modules.objectron.calculators import lift_2d_frame_annotation_to_3d_calculator_pb2
 # pylint: enable=unused-import
 from mediapipe.python.solution_base import SolutionBase
+from mediapipe.python.solutions import download_utils
 
 
 class BoxLandmark(enum.IntEnum):
@@ -74,7 +75,7 @@ class BoxLandmark(enum.IntEnum):
   BACK_TOP_RIGHT = 7
   FRONT_TOP_RIGHT = 8
 
-BINARYPB_FILE_PATH = 'mediapipe/modules/objectron/objectron_cpu.binarypb'
+_BINARYPB_FILE_PATH = 'mediapipe/modules/objectron/objectron_cpu.binarypb'
 BOX_CONNECTIONS = frozenset([
     (BoxLandmark.BACK_BOTTOM_LEFT, BoxLandmark.FRONT_BOTTOM_LEFT),
     (BoxLandmark.BACK_BOTTOM_LEFT, BoxLandmark.BACK_TOP_LEFT),
@@ -132,9 +133,19 @@ _MODEL_DICT = {
 }
 
 
-def GetModelByName(name: str) -> ObjectronModel:
+def _download_oss_objectron_models(objectron_model: str):
+  """Downloads the objectron models from the MediaPipe Github repo if they don't exist in the package."""
+
+  download_utils.download_oss_model(
+      'mediapipe/modules/objectron/object_detection_ssd_mobilenetv2_oidv4_fp16.tflite'
+  )
+  download_utils.download_oss_model(objectron_model)
+
+
+def get_model_by_name(name: str) -> ObjectronModel:
   if name not in _MODEL_DICT:
     raise ValueError(f'{name} is not a valid model name for Objectron.')
+  _download_oss_objectron_models(_MODEL_DICT[name].model_path)
   return _MODEL_DICT[name]
 
 
@@ -186,6 +197,10 @@ class Objectron(SolutionBase):
         conversions inside the API.
       image_size (Optional): size (image_width, image_height) of the input image
         , ONLY needed when use focal_length and principal_point in pixel space.
+
+    Raises:
+      ConnectionError: If the objectron open source model can't be downloaded
+        from the MediaPipe Github repo.
     """
     # Get Camera parameters.
     fx, fy = focal_length
@@ -199,20 +214,16 @@ class Objectron(SolutionBase):
       py = - (py - half_height) / half_height
 
     # Create and init model.
-    model = GetModelByName(model_name)
+    model = get_model_by_name(model_name)
     super().__init__(
-        binary_graph_path=BINARYPB_FILE_PATH,
+        binary_graph_path=_BINARYPB_FILE_PATH,
         side_inputs={
             'box_landmark_model_path': model.model_path,
             'allowed_labels': model.label_name,
             'max_num_objects': max_num_objects,
+            'use_prev_landmarks': not static_image_mode,
         },
         calculator_params={
-            'ConstantSidePacketCalculator.packet': [
-                constant_side_packet_calculator_pb2
-                .ConstantSidePacketCalculatorOptions.ConstantSidePacket(
-                    bool_value=not static_image_mode)
-            ],
             ('objectdetectionoidv4subgraph'
              '__TensorsToDetectionsCalculator.min_score_thresh'):
                 min_detection_confidence,
@@ -247,10 +258,10 @@ class Objectron(SolutionBase):
     """
 
     results = super().process(input_data={'image': image})
-    if results.detected_objects:
-      results.detected_objects = self._convert_format(results.detected_objects)
+    if results.detected_objects:  # pytype: disable=attribute-error
+      results.detected_objects = self._convert_format(results.detected_objects)  # type: ignore
     else:
-      results.detected_objects = None
+      results.detected_objects = None  # pytype: disable=not-writable
     return results
 
   def _convert_format(
@@ -275,4 +286,3 @@ class Objectron(SolutionBase):
       new_outputs.append(ObjectronOutputs(landmarks_2d, landmarks_3d,
                                           rotation, translation, scale=scale))
     return new_outputs
-

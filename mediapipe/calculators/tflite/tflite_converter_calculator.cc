@@ -337,9 +337,9 @@ absl::Status TfLiteConverterCalculator::ProcessCPU(CalculatorContext* cc) {
     if (use_quantized_tensors_) {
       const int width_padding =
           image_frame.WidthStep() / image_frame.ByteDepth() - width * channels;
-      const uint8* image_buffer =
-          reinterpret_cast<const uint8*>(image_frame.PixelData());
-      uint8* tensor_buffer = tensor->data.uint8;
+      const uint8_t* image_buffer =
+          reinterpret_cast<const uint8_t*>(image_frame.PixelData());
+      uint8_t* tensor_buffer = tensor->data.uint8;
       RET_CHECK(tensor_buffer);
       for (int row = 0; row < height; ++row) {
         for (int col = 0; col < width; ++col) {
@@ -354,8 +354,8 @@ absl::Status TfLiteConverterCalculator::ProcessCPU(CalculatorContext* cc) {
       float* tensor_buffer = tensor->data.f;
       RET_CHECK(tensor_buffer);
       if (image_frame.ByteDepth() == 1) {
-        MP_RETURN_IF_ERROR(NormalizeImage<uint8>(image_frame, flip_vertically_,
-                                                 tensor_buffer));
+        MP_RETURN_IF_ERROR(NormalizeImage<uint8_t>(
+            image_frame, flip_vertically_, tensor_buffer));
       } else if (image_frame.ByteDepth() == 4) {
         MP_RETURN_IF_ERROR(NormalizeImage<float>(image_frame, flip_vertically_,
                                                  tensor_buffer));
@@ -499,7 +499,6 @@ absl::Status TfLiteConverterCalculator::InitGpu(CalculatorContext* cc) {
   gpu_data_out_ = absl::make_unique<GPUData>();
   gpu_data_out_->elements = input.height() * input.width() * max_num_channels_;
   const bool include_alpha = (max_num_channels_ == 4);
-  const bool single_channel = (max_num_channels_ == 1);
   if (!(format == mediapipe::ImageFormat::GRAY8 ||
         format == mediapipe::ImageFormat::SRGB ||
         format == mediapipe::ImageFormat::SRGBA))
@@ -509,6 +508,7 @@ absl::Status TfLiteConverterCalculator::InitGpu(CalculatorContext* cc) {
 #endif  // MEDIAPIPE_TFLITE_GPU_SUPPORTED
 
 #if MEDIAPIPE_TFLITE_GL_INFERENCE
+  const bool single_channel = (max_num_channels_ == 1);
   MP_RETURN_IF_ERROR(gpu_helper_.RunInGlContext(
       [this, &include_alpha, &input, &single_channel]() -> absl::Status {
         // Device memory.

@@ -16,12 +16,12 @@
 #include <string>
 #include <vector>
 
+#include "absl/flags/flag.h"
 #include "mediapipe/calculators/tensorflow/tensorflow_inference_calculator.pb.h"
 #include "mediapipe/calculators/tensorflow/tensorflow_session_from_frozen_graph_generator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_runner.h"
 #include "mediapipe/framework/deps/file_path.h"
-#include "mediapipe/framework/port/commandlineflags.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/integral_types.h"
@@ -38,9 +38,17 @@
 
 namespace mediapipe {
 
+using ::testing::AllOf;
+using ::testing::HasSubstr;
+
 namespace tf = ::tensorflow;
 
 namespace {
+
+constexpr char kMultipliedTag[] = "MULTIPLIED";
+constexpr char kBTag[] = "B";
+constexpr char kSessionTag[] = "SESSION";
+
 std::string GetGraphDefPath() {
 #ifdef __APPLE__
   char path[1024];
@@ -86,23 +94,23 @@ class TensorflowInferenceCalculatorTest : public ::testing::Test {
     MEDIAPIPE_CHECK_OK(tool::RunGenerateAndValidateTypes(
         "TensorFlowSessionFromFrozenGraphGenerator", extendable_options,
         input_side_packets, &output_side_packets));
-    runner_->MutableSidePackets()->Tag("SESSION") =
-        output_side_packets.Tag("SESSION");
+    runner_->MutableSidePackets()->Tag(kSessionTag) =
+        output_side_packets.Tag(kSessionTag);
   }
 
-  Packet CreateTensorPacket(const std::vector<int32>& input, int64 time) {
+  Packet CreateTensorPacket(const std::vector<int32_t>& input, int64_t time) {
     tf::TensorShape tensor_shape;
     tensor_shape.AddDim(input.size());
     auto tensor = absl::make_unique<tf::Tensor>(tf::DT_INT32, tensor_shape);
     for (int i = 0; i < input.size(); ++i) {
-      tensor->vec<int32>()(i) = input[i];
+      tensor->vec<int32_t>()(i) = input[i];
     }
     return Adopt(tensor.release()).At(Timestamp(time));
   }
 
   // Create tensor from Vector and add as a Packet to the provided tag as input.
-  void AddVectorToInputsAsTensor(const std::vector<int32>& input,
-                                 const std::string& tag, int64 time) {
+  void AddVectorToInputsAsTensor(const std::vector<int32_t>& input,
+                                 const std::string& tag, int64_t time) {
     runner_->MutableInputs()->Tag(tag).packets.push_back(
         CreateTensorPacket(input, time));
   }
@@ -140,19 +148,19 @@ TEST_F(TensorflowInferenceCalculatorTest, GetConstants) {
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_b =
-      runner_->Outputs().Tag("B").packets;
+      runner_->Outputs().Tag(kBTag).packets;
   ASSERT_EQ(output_packets_b.size(), 1);
   const tf::Tensor& tensor_b = output_packets_b[0].Get<tf::Tensor>();
   tf::TensorShape expected_shape({1, 3});
-  auto expected_tensor = tf::test::AsTensor<int32>({3, 2, 1}, expected_shape);
-  tf::test::ExpectTensorEqual<int32>(expected_tensor, tensor_b);
+  auto expected_tensor = tf::test::AsTensor<int32_t>({3, 2, 1}, expected_shape);
+  tf::test::ExpectTensorEqual<int32_t>(expected_tensor, tensor_b);
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(1, output_packets_mult.size());
   const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
-  expected_tensor = tf::test::AsTensor<int32>({0, 0, 0}, expected_shape);
-  tf::test::ExpectTensorEqual<int32>(expected_tensor, tensor_mult);
+  expected_tensor = tf::test::AsTensor<int32_t>({0, 0, 0}, expected_shape);
+  tf::test::ExpectTensorEqual<int32_t>(expected_tensor, tensor_mult);
 
   EXPECT_EQ(1, runner_
                    ->GetCounter(
@@ -181,12 +189,13 @@ TEST_F(TensorflowInferenceCalculatorTest, GetComputed) {
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(1, output_packets_mult.size());
   const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
   tf::TensorShape expected_shape({3});
-  auto expected_tensor = tf::test::AsTensor<int32>({6, 8, 10}, expected_shape);
-  tf::test::ExpectTensorEqual<int32>(expected_tensor, tensor_mult);
+  auto expected_tensor =
+      tf::test::AsTensor<int32_t>({6, 8, 10}, expected_shape);
+  tf::test::ExpectTensorEqual<int32_t>(expected_tensor, tensor_mult);
 
   // Add only one of the two expected tensors at the next timestamp, expect
   // useful failure message.
@@ -194,8 +203,8 @@ TEST_F(TensorflowInferenceCalculatorTest, GetComputed) {
   auto run_status = runner_->Run();
   ASSERT_FALSE(run_status.ok());
   EXPECT_THAT(run_status.ToString(),
-              testing::HasSubstr("TensorFlowInferenceCalculator"));
-  EXPECT_THAT(run_status.ToString(), testing::HasSubstr("Tag B"));
+              HasSubstr("TensorFlowInferenceCalculator"));
+  EXPECT_THAT(run_status.ToString(), HasSubstr("Tag B"));
 }
 
 TEST_F(TensorflowInferenceCalculatorTest, GetComputed_MaxInFlight) {
@@ -220,12 +229,13 @@ TEST_F(TensorflowInferenceCalculatorTest, GetComputed_MaxInFlight) {
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(1, output_packets_mult.size());
   const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
   tf::TensorShape expected_shape({3});
-  auto expected_tensor = tf::test::AsTensor<int32>({6, 8, 10}, expected_shape);
-  tf::test::ExpectTensorEqual<int32>(expected_tensor, tensor_mult);
+  auto expected_tensor =
+      tf::test::AsTensor<int32_t>({6, 8, 10}, expected_shape);
+  tf::test::ExpectTensorEqual<int32_t>(expected_tensor, tensor_mult);
 
   // Add only one of the two expected tensors at the next timestamp, expect
   // useful failure message.
@@ -233,8 +243,8 @@ TEST_F(TensorflowInferenceCalculatorTest, GetComputed_MaxInFlight) {
   auto run_status = runner_->Run();
   ASSERT_FALSE(run_status.ok());
   EXPECT_THAT(run_status.ToString(),
-              testing::HasSubstr("TensorFlowInferenceCalculator"));
-  EXPECT_THAT(run_status.ToString(), testing::HasSubstr("Tag B"));
+              HasSubstr("TensorFlowInferenceCalculator"));
+  EXPECT_THAT(run_status.ToString(), HasSubstr("Tag B"));
 }
 
 TEST_F(TensorflowInferenceCalculatorTest, BadTag) {
@@ -250,7 +260,12 @@ TEST_F(TensorflowInferenceCalculatorTest, BadTag) {
 
   runner_ = absl::make_unique<CalculatorRunner>(config);
   AddSessionInputSidePacket();
-  ASSERT_FALSE(runner_->Run().ok());
+  absl::Status status = runner_->Run();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      AllOf(HasSubstr("Can't find tag 'BAD' in signature"),
+            HasSubstr("instead found tags A, B, EXPENSIVE, MULTIPLIED")));
 }
 
 TEST_F(TensorflowInferenceCalculatorTest, GetMultiBatchComputed) {
@@ -274,14 +289,14 @@ TEST_F(TensorflowInferenceCalculatorTest, GetMultiBatchComputed) {
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(2, output_packets_mult.size());
   const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
-  auto expected_tensor = tf::test::AsTensor<int32>({6, 8, 10});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult, expected_tensor);
+  auto expected_tensor = tf::test::AsTensor<int32_t>({6, 8, 10});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult, expected_tensor);
   const tf::Tensor& tensor_mult1 = output_packets_mult[1].Get<tf::Tensor>();
-  auto expected_tensor1 = tf::test::AsTensor<int32>({9, 12, 15});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult1, expected_tensor1);
+  auto expected_tensor1 = tf::test::AsTensor<int32_t>({9, 12, 15});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult1, expected_tensor1);
 
   EXPECT_EQ(2, runner_
                    ->GetCounter(
@@ -311,14 +326,14 @@ TEST_F(TensorflowInferenceCalculatorTest, GetMultiBatchComputed_MaxInFlight) {
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(2, output_packets_mult.size());
   const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
-  auto expected_tensor = tf::test::AsTensor<int32>({6, 8, 10});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult, expected_tensor);
+  auto expected_tensor = tf::test::AsTensor<int32_t>({6, 8, 10});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult, expected_tensor);
   const tf::Tensor& tensor_mult1 = output_packets_mult[1].Get<tf::Tensor>();
-  auto expected_tensor1 = tf::test::AsTensor<int32>({9, 12, 15});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult1, expected_tensor1);
+  auto expected_tensor1 = tf::test::AsTensor<int32_t>({9, 12, 15});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult1, expected_tensor1);
 
   EXPECT_EQ(2, runner_
                    ->GetCounter(
@@ -351,17 +366,17 @@ TEST_F(TensorflowInferenceCalculatorTest,
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(3, output_packets_mult.size());
   const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
-  auto expected_tensor = tf::test::AsTensor<int32>({6, 8, 10});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult, expected_tensor);
+  auto expected_tensor = tf::test::AsTensor<int32_t>({6, 8, 10});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult, expected_tensor);
   const tf::Tensor& tensor_mult1 = output_packets_mult[1].Get<tf::Tensor>();
-  auto expected_tensor1 = tf::test::AsTensor<int32>({9, 12, 15});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult1, expected_tensor1);
+  auto expected_tensor1 = tf::test::AsTensor<int32_t>({9, 12, 15});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult1, expected_tensor1);
   const tf::Tensor& tensor_mult2 = output_packets_mult[2].Get<tf::Tensor>();
-  auto expected_tensor2 = tf::test::AsTensor<int32>({12, 16, 20});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult2, expected_tensor2);
+  auto expected_tensor2 = tf::test::AsTensor<int32_t>({12, 16, 20});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult2, expected_tensor2);
 
   EXPECT_EQ(3, runner_
                    ->GetCounter(
@@ -392,14 +407,14 @@ TEST_F(TensorflowInferenceCalculatorTest, GetSingleBatchComputed) {
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(2, output_packets_mult.size());
   const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
-  auto expected_tensor = tf::test::AsTensor<int32>({6, 8, 10});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult, expected_tensor);
+  auto expected_tensor = tf::test::AsTensor<int32_t>({6, 8, 10});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult, expected_tensor);
   const tf::Tensor& tensor_mult1 = output_packets_mult[1].Get<tf::Tensor>();
-  auto expected_tensor1 = tf::test::AsTensor<int32>({9, 12, 15});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult1, expected_tensor1);
+  auto expected_tensor1 = tf::test::AsTensor<int32_t>({9, 12, 15});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult1, expected_tensor1);
 
   EXPECT_EQ(2, runner_
                    ->GetCounter(
@@ -430,14 +445,54 @@ TEST_F(TensorflowInferenceCalculatorTest, GetCloseBatchComputed) {
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(2, output_packets_mult.size());
   const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
-  auto expected_tensor = tf::test::AsTensor<int32>({6, 8, 10});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult, expected_tensor);
+  auto expected_tensor = tf::test::AsTensor<int32_t>({6, 8, 10});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult, expected_tensor);
   const tf::Tensor& tensor_mult1 = output_packets_mult[1].Get<tf::Tensor>();
-  auto expected_tensor1 = tf::test::AsTensor<int32>({9, 12, 15});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult1, expected_tensor1);
+  auto expected_tensor1 = tf::test::AsTensor<int32_t>({9, 12, 15});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult1, expected_tensor1);
+
+  EXPECT_EQ(2, runner_
+                   ->GetCounter(
+                       "TensorFlowInferenceCalculator-TotalProcessedTimestamps")
+                   ->Get());
+}
+
+TEST_F(TensorflowInferenceCalculatorTest, GetCloseBatchComputedNoPadding) {
+  CalculatorGraphConfig::Node config;
+  config.set_calculator("TensorFlowInferenceCalculator");
+  config.add_input_stream("A:tensor_a");
+  config.add_input_stream("B:tensor_b");
+  config.add_output_stream("MULTIPLIED:tensor_o1");
+  config.add_input_side_packet("SESSION:session");
+  CalculatorOptions options;
+  options.MutableExtension(TensorFlowInferenceCalculatorOptions::ext)
+      ->set_batch_size(3);
+  options.MutableExtension(TensorFlowInferenceCalculatorOptions::ext)
+      ->set_pad_to_batch_size(false);
+  options.MutableExtension(TensorFlowInferenceCalculatorOptions::ext)
+      ->set_add_batch_dim_to_tensors(true);
+  *config.mutable_options() = options;
+
+  runner_ = absl::make_unique<CalculatorRunner>(config);
+  AddSessionInputSidePacket();
+  AddVectorToInputsAsTensor({2, 2, 2}, "A", 0);
+  AddVectorToInputsAsTensor({3, 4, 5}, "B", 0);
+  AddVectorToInputsAsTensor({3, 3, 3}, "A", 1);
+  AddVectorToInputsAsTensor({3, 4, 5}, "B", 1);
+  MP_ASSERT_OK(runner_->Run());
+
+  const std::vector<Packet>& output_packets_mult =
+      runner_->Outputs().Tag(kMultipliedTag).packets;
+  ASSERT_EQ(2, output_packets_mult.size());
+  const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
+  auto expected_tensor = tf::test::AsTensor<int32_t>({6, 8, 10});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult, expected_tensor);
+  const tf::Tensor& tensor_mult1 = output_packets_mult[1].Get<tf::Tensor>();
+  auto expected_tensor1 = tf::test::AsTensor<int32_t>({9, 12, 15});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult1, expected_tensor1);
 
   EXPECT_EQ(2, runner_
                    ->GetCounter(
@@ -481,23 +536,23 @@ TEST_F(TensorflowInferenceCalculatorTest, GetBatchComputed_MaxInFlight) {
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(5, output_packets_mult.size());
   const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
-  auto expected_tensor = tf::test::AsTensor<int32>({6, 8, 10});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult, expected_tensor);
+  auto expected_tensor = tf::test::AsTensor<int32_t>({6, 8, 10});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult, expected_tensor);
   const tf::Tensor& tensor_mult1 = output_packets_mult[1].Get<tf::Tensor>();
-  auto expected_tensor1 = tf::test::AsTensor<int32>({9, 12, 15});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult1, expected_tensor1);
+  auto expected_tensor1 = tf::test::AsTensor<int32_t>({9, 12, 15});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult1, expected_tensor1);
   const tf::Tensor& tensor_mult2 = output_packets_mult[2].Get<tf::Tensor>();
-  auto expected_tensor2 = tf::test::AsTensor<int32>({12, 16, 20});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult2, expected_tensor2);
+  auto expected_tensor2 = tf::test::AsTensor<int32_t>({12, 16, 20});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult2, expected_tensor2);
   const tf::Tensor& tensor_mult3 = output_packets_mult[3].Get<tf::Tensor>();
-  auto expected_tensor3 = tf::test::AsTensor<int32>({15, 20, 25});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult3, expected_tensor3);
+  auto expected_tensor3 = tf::test::AsTensor<int32_t>({15, 20, 25});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult3, expected_tensor3);
   const tf::Tensor& tensor_mult4 = output_packets_mult[4].Get<tf::Tensor>();
-  auto expected_tensor4 = tf::test::AsTensor<int32>({18, 24, 30});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult4, expected_tensor4);
+  auto expected_tensor4 = tf::test::AsTensor<int32_t>({18, 24, 30});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult4, expected_tensor4);
 
   EXPECT_EQ(5, runner_
                    ->GetCounter(
@@ -528,16 +583,16 @@ TEST_F(TensorflowInferenceCalculatorTest, TestRecurrentStates) {
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(2, output_packets_mult.size());
   const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
   LOG(INFO) << "timestamp: " << 0;
-  auto expected_tensor = tf::test::AsTensor<int32>({3, 8, 15});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult, expected_tensor);
+  auto expected_tensor = tf::test::AsTensor<int32_t>({3, 8, 15});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult, expected_tensor);
   const tf::Tensor& tensor_mult1 = output_packets_mult[1].Get<tf::Tensor>();
-  auto expected_tensor1 = tf::test::AsTensor<int32>({9, 32, 75});
+  auto expected_tensor1 = tf::test::AsTensor<int32_t>({9, 32, 75});
   LOG(INFO) << "timestamp: " << 1;
-  tf::test::ExpectTensorEqual<int32>(tensor_mult1, expected_tensor1);
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult1, expected_tensor1);
 
   EXPECT_EQ(2, runner_
                    ->GetCounter(
@@ -569,16 +624,16 @@ TEST_F(TensorflowInferenceCalculatorTest, TestRecurrentStateOverride) {
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(2, output_packets_mult.size());
   const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
   LOG(INFO) << "timestamp: " << 0;
-  auto expected_tensor = tf::test::AsTensor<int32>({3, 4, 5});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult, expected_tensor);
+  auto expected_tensor = tf::test::AsTensor<int32_t>({3, 4, 5});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult, expected_tensor);
   const tf::Tensor& tensor_mult1 = output_packets_mult[1].Get<tf::Tensor>();
-  auto expected_tensor1 = tf::test::AsTensor<int32>({3, 4, 5});
+  auto expected_tensor1 = tf::test::AsTensor<int32_t>({3, 4, 5});
   LOG(INFO) << "timestamp: " << 1;
-  tf::test::ExpectTensorEqual<int32>(tensor_mult1, expected_tensor1);
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult1, expected_tensor1);
 
   EXPECT_EQ(2, runner_
                    ->GetCounter(
@@ -662,7 +717,7 @@ TEST_F(TensorflowInferenceCalculatorTest, MissingInputFeature_Skip) {
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(0, output_packets_mult.size());
 }
 
@@ -691,11 +746,11 @@ TEST_F(TensorflowInferenceCalculatorTest,
   MP_ASSERT_OK(runner_->Run());
 
   const std::vector<Packet>& output_packets_mult =
-      runner_->Outputs().Tag("MULTIPLIED").packets;
+      runner_->Outputs().Tag(kMultipliedTag).packets;
   ASSERT_EQ(1, output_packets_mult.size());
   const tf::Tensor& tensor_mult = output_packets_mult[0].Get<tf::Tensor>();
-  auto expected_tensor = tf::test::AsTensor<int32>({9, 12, 15});
-  tf::test::ExpectTensorEqual<int32>(tensor_mult, expected_tensor);
+  auto expected_tensor = tf::test::AsTensor<int32_t>({9, 12, 15});
+  tf::test::ExpectTensorEqual<int32_t>(tensor_mult, expected_tensor);
 
   EXPECT_EQ(1, runner_
                    ->GetCounter(
@@ -735,7 +790,7 @@ TEST_F(TensorflowInferenceCalculatorTest, BatchedInputTooBigBatch) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
       status.message(),
-      ::testing::HasSubstr(
+      HasSubstr(
           "has more packets than batch capacity. batch_size: 2 packets: 3"));
 }
 

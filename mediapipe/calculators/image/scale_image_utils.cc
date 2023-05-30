@@ -92,11 +92,20 @@ absl::Status FindOutputDimensions(int input_width,             //
                                   int input_height,            //
                                   int target_width,            //
                                   int target_height,           //
+                                  int target_max_area,         //
                                   bool preserve_aspect_ratio,  //
                                   int scale_to_multiple_of,    //
                                   int* output_width, int* output_height) {
   CHECK(output_width);
   CHECK(output_height);
+
+  if (target_max_area > 0 && input_width * input_height > target_max_area) {
+    preserve_aspect_ratio = true;
+    target_height = static_cast<int>(sqrt(static_cast<double>(target_max_area) /
+                                          (static_cast<double>(input_width) /
+                                           static_cast<double>(input_height))));
+    target_width = -1;  // Resize width to preserve aspect ratio.
+  }
 
   if (preserve_aspect_ratio) {
     RET_CHECK(scale_to_multiple_of == 2)
@@ -133,6 +142,9 @@ absl::Status FindOutputDimensions(int input_width,             //
                                       static_cast<double>(input_height));
     try_width = (try_width / 2) * 2;
     try_height = (try_height / 2) * 2;
+    // The output width/height should be greater than 0.
+    try_width = std::max(try_width, 1);
+    try_height = std::max(try_height, 1);
 
     if (target_height <= 0 || try_height <= target_height) {
       // The resulting height based on the target width and aspect ratio
@@ -151,6 +163,9 @@ absl::Status FindOutputDimensions(int input_width,             //
                                      static_cast<double>(input_width));
     try_width = (try_width / 2) * 2;
     try_height = (try_height / 2) * 2;
+    // The output width/height should be greater than 0.
+    try_width = std::max(try_width, 1);
+    try_height = std::max(try_height, 1);
 
     if (target_width <= 0 || try_width <= target_width) {
       // The resulting width based on the target width and aspect ratio
@@ -162,6 +177,18 @@ absl::Status FindOutputDimensions(int input_width,             //
   }
   RET_CHECK_FAIL()
       << "Unable to set output dimensions based on target dimensions.";
+}
+
+absl::Status FindOutputDimensions(int input_width,             //
+                                  int input_height,            //
+                                  int target_width,            //
+                                  int target_height,           //
+                                  bool preserve_aspect_ratio,  //
+                                  int scale_to_multiple_of,    //
+                                  int* output_width, int* output_height) {
+  return FindOutputDimensions(
+      input_width, input_height, target_width, target_height, -1,
+      preserve_aspect_ratio, scale_to_multiple_of, output_width, output_height);
 }
 
 }  // namespace scale_image

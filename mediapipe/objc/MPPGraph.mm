@@ -21,9 +21,9 @@
 
 #include "absl/memory/memory.h"
 #include "mediapipe/framework/calculator_framework.h"
+#include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/graph_service.h"
-#include "mediapipe/gpu/MPPGraphGPUData.h"
 #include "mediapipe/gpu/gl_base.h"
 #include "mediapipe/gpu/gpu_shared_data_internal.h"
 #include "mediapipe/objc/util.h"
@@ -133,12 +133,12 @@ void CallFrameDelegate(void* wrapperVoid, const std::string& streamName,
         if (format == mediapipe::ImageFormat::SRGBA) {
           // Swap R and B channels.
           const uint8_t permuteMap[4] = {2, 1, 0, 3};
-          vImage_Error vError = vImagePermuteChannels_ARGB8888(
-              &vSource, &vDestination, permuteMap, kvImageNoFlags);
+          vImage_Error __unused vError =
+              vImagePermuteChannels_ARGB8888(&vSource, &vDestination, permuteMap, kvImageNoFlags);
           _GTMDevAssert(vError == kvImageNoError, @"vImagePermuteChannels failed: %zd", vError);
         } else {
           // Convert grayscale back to BGRA
-          vImage_Error vError = vImageGrayToBGRA(&vSource, &vDestination);
+          vImage_Error __unused vError = vImageGrayToBGRA(&vSource, &vDestination);
           _GTMDevAssert(vError == kvImageNoError, @"vImageGrayToBGRA failed: %zd", vError);
         }
 
@@ -163,10 +163,15 @@ void CallFrameDelegate(void* wrapperVoid, const std::string& streamName,
         _GTMDevLog(@"unsupported ImageFormat: %d", format);
       }
 #if MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
-    } else if (packetType == MPPPacketTypePixelBuffer) {
+    } else if (packetType == MPPPacketTypePixelBuffer ||
+               packetType == MPPPacketTypeImage) {
       wrapper->_framesInFlight--;
-      CVPixelBufferRef pixelBuffer = packet.Get<mediapipe::GpuBuffer>().GetCVPixelBufferRef();
-      if ([wrapper.delegate
+      CVPixelBufferRef pixelBuffer;
+      if (packetType == MPPPacketTypePixelBuffer)
+        pixelBuffer = mediapipe::GetCVPixelBufferRef(packet.Get<mediapipe::GpuBuffer>());
+      else
+        pixelBuffer = packet.Get<mediapipe::Image>().GetCVPixelBufferRef();
+if ([wrapper.delegate
               respondsToSelector:@selector
               (mediapipeGraph:didOutputPixelBuffer:fromStream:timestamp:)]) {
         [wrapper.delegate mediapipeGraph:wrapper
@@ -225,15 +230,16 @@ void CallFrameDelegate(void* wrapperVoid, const std::string& streamName,
 }
 
 - (absl::Status)performStart {
-  absl::Status status = _graph->Initialize(_config);
-  if (!status.ok()) {
-    return status;
-  }
+  absl::Status status;
   for (const auto& service_packet : _servicePackets) {
     status = _graph->SetServicePacket(*service_packet.first, service_packet.second);
     if (!status.ok()) {
       return status;
     }
+  }
+  status = _graph->Initialize(_config);
+  if (!status.ok()) {
+    return status;
   }
   status = _graph->StartRun(_inputSidePackets, _streamHeaders);
   if (!status.ok()) {
@@ -316,10 +322,24 @@ void CallFrameDelegate(void* wrapperVoid, const std::string& streamName,
   } else if (packetType == MPPPacketTypePixelBuffer) {
     packet = mediapipe::MakePacket<mediapipe::GpuBuffer>(imageBuffer);
 #endif  // MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
+  } else if (packetType == MPPPacketTypeImage) {
+#if MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
+    // GPU
+    packet = mediapipe::MakePacket<mediapipe::Image>(imageBuffer);
+#else
+    // CPU
+    auto frame = CreateImageFrameForCVPixelBuffer(imageBuffer, /* canOverwrite = */ false,
+                                                  /* bgrAsRgb = */ false);
+    packet = mediapipe::MakePacket<mediapipe::Image>(std::move(frame));
+#endif  // MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
   } else {
     _GTMDevLog(@"unsupported packet type: %d", packetType);
   }
   return packet;
+}
+
+- (mediapipe::Packet)imagePacketWithPixelBuffer:(CVPixelBufferRef)pixelBuffer {
+  return [self packetWithPixelBuffer:(pixelBuffer) packetType:(MPPPacketTypeImage)];
 }
 
 - (BOOL)sendPixelBuffer:(CVPixelBufferRef)imageBuffer

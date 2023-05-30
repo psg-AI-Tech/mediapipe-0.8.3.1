@@ -1,5 +1,6 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/framework/framework_concepts/calculators
 title: Calculators
 parent: Framework Concepts
 nav_order: 1
@@ -11,6 +12,12 @@ nav_order: 1
 1. TOC
 {:toc}
 ---
+
+**Attention:** *Thanks for your interest in MediaPipe! We have moved to
+[https://developers.google.com/mediapipe](https://developers.google.com/mediapipe)
+as the primary developer documentation site for MediaPipe as of April 3, 2023.*
+
+----
 
 Each calculator is a node of a graph. We describe how to create a new
 calculator, how to initialize a calculator, how to perform its calculations,
@@ -133,7 +140,7 @@ write outputs. After Close returns, the calculator is destroyed.
 Calculators with no inputs are referred to as sources. A source calculator
 continues to have `Process()` called as long as it returns an `Ok` status. A
 source calculator indicates that it is exhausted by returning a stop status
-(i.e. MediaPipe::tool::StatusStop).
+(i.e. [`mediaPipe::tool::StatusStop()`](https://github.com/google/mediapipe/tree/master/mediapipe/framework/tool/status_util.cc).).
 
 ## Identifying inputs and outputs
 
@@ -187,7 +194,7 @@ node {
 ```
 
 In the calculator implementation, inputs and outputs are also identified by tag
-name and index number. In the function below input are output are identified:
+name and index number. In the function below input and output are identified:
 
 *   By index number: The combined input stream is identified simply by index
     `0`.
@@ -248,12 +255,70 @@ absl::Status MyCalculator::Process() {
 }
 ```
 
+## Calculator options
+
+Calculators accept processing parameters through (1) input stream packets (2)
+input side packets, and (3) calculator options. Calculator options, if
+specified, appear as literal values in the `node_options` field of the
+`CalculatorGraphConfiguration.Node` message.
+
+```
+  node {
+    calculator: "TfLiteInferenceCalculator"
+    input_stream: "TENSORS:main_model_input"
+    output_stream: "TENSORS:main_model_output"
+    node_options: {
+      [type.googleapis.com/mediapipe.TfLiteInferenceCalculatorOptions] {
+        model_path: "mediapipe/models/detection_model.tflite"
+      }
+    }
+  }
+```
+
+The `node_options` field accepts the proto3 syntax.  Alternatively, calculator
+options can be specified in the `options` field using proto2 syntax.
+
+```
+  node {
+    calculator: "TfLiteInferenceCalculator"
+    input_stream: "TENSORS:main_model_input"
+    output_stream: "TENSORS:main_model_output"
+    node_options: {
+      [type.googleapis.com/mediapipe.TfLiteInferenceCalculatorOptions] {
+        model_path: "mediapipe/models/detection_model.tflite"
+      }
+    }
+  }
+```
+
+Not all calculators accept calcuator options. In order to accept options, a
+calculator will normally define a new protobuf message type to represent its
+options, such as `PacketClonerCalculatorOptions`. The calculator will then
+read that protobuf message in its `CalculatorBase::Open` method, and possibly
+also in its `CalculatorBase::GetContract` function or its
+`CalculatorBase::Process` method. Normally, the new protobuf message type will
+be defined as a protobuf schema using a ".proto" file and a
+`mediapipe_proto_library()` build rule.
+
+```
+  mediapipe_proto_library(
+      name = "packet_cloner_calculator_proto",
+      srcs = ["packet_cloner_calculator.proto"],
+      visibility = ["//visibility:public"],
+      deps = [
+          "//mediapipe/framework:calculator_options_proto",
+          "//mediapipe/framework:calculator_proto",
+      ],
+  )
+```
+
+
 ## Example calculator
 
 This section discusses the implementation of `PacketClonerCalculator`, which
 does a relatively simple job, and is used in many calculator graphs.
-`PacketClonerCalculator` simply produces a copy of its most recent input
-packets on demand.
+`PacketClonerCalculator` simply produces a copy of its most recent input packets
+on demand.
 
 `PacketClonerCalculator` is useful when the timestamps of arriving data packets
 are not aligned perfectly. Suppose we have a room with a microphone, light
@@ -279,8 +344,8 @@ input streams:
     imageframe of video data representing video collected from camera in the
     room with timestamp.
 
-Below is the implementation of the `PacketClonerCalculator`.  You can see
-the `GetContract()`, `Open()`, and `Process()` methods as well as the instance
+Below is the implementation of the `PacketClonerCalculator`. You can see the
+`GetContract()`, `Open()`, and `Process()` methods as well as the instance
 variable `current_` which holds the most recent input packets.
 
 ```c++
@@ -355,7 +420,6 @@ class PacketClonerCalculator : public CalculatorBase {
               current_[i].At(cc->InputTimestamp()));
           // Add a packet to output stream of index i a packet from inputstream i
           // with timestamp common to all present inputs
-          //
         } else {
           cc->Outputs().Index(i).SetNextTimestampBound(
               cc->InputTimestamp().NextAllowedInStream());
@@ -382,7 +446,7 @@ defined your calculator class, register it with a macro invocation
 REGISTER_CALCULATOR(calculator_class_name).
 
 Below is a trivial MediaPipe graph that has 3 input streams, 1 node
-(PacketClonerCalculator) and 3 output streams.
+(PacketClonerCalculator) and 2 output streams.
 
 ```proto
 input_stream: "room_mic_signal"
@@ -402,6 +466,6 @@ node {
 The diagram below shows how the `PacketClonerCalculator` defines its output
 packets (bottom) based on its series of input packets (top).
 
-| ![Graph using PacketClonerCalculator](../images/packet_cloner_calculator.png) |
-| :---------------------------------------------------------------------------: |
-| *Each time it receives a packet on its TICK input stream, the PacketClonerCalculator outputs the most recent packet from each of its input streams. The sequence of output packets (bottom) is determined by the sequence of input packets (top) and their timestamps. The timestamps are shown along the right side of the diagram.* |
+![Graph using PacketClonerCalculator](https://mediapipe.dev/images/packet_cloner_calculator.png)  |
+:--------------------------------------------------------------------------: |
+*Each time it receives a packet on its TICK input stream, the PacketClonerCalculator outputs the most recent packet from each of its input streams. The sequence of output packets (bottom) is determined by the sequence of input packets (top) and their timestamps. The timestamps are shown along the right side of the diagram.* |

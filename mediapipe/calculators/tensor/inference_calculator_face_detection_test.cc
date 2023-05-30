@@ -57,11 +57,7 @@ const std::vector<Param>& GetParams() {
     // Metal is not available on the iOS simulator.
     p.push_back({"Metal", "Metal"});
     p.back().delegate.mutable_gpu();
-#endif  // TARGET_IPHONE_SIMULATOR
-#if __EMSCRIPTEN__
-    p.push_back({"MlDrift", "MlDrift"});
-    p.back().delegate.mutable_gpu();
-#endif                // __EMSCRIPTEN__
+#endif                // TARGET_IPHONE_SIMULATOR
 #if __ANDROID__ && 0  // Disabled for now since emulator can't go GLESv3
     p.push_back({"Gl", "Gl"});
     p.back().delegate.mutable_gpu();
@@ -78,22 +74,11 @@ const std::vector<Param>& GetParams() {
 
 class InferenceCalculatorTest : public testing::TestWithParam<Param> {
  protected:
-#if __EMSCRIPTEN__
-  // TODO: fix Tensor locking.
-  // The MlDrift backend currently fails in debug mode without this,
-  // because of Tensor locking issues. I am adding this temporarily since
-  // the calculator is already being used and it's better to have test
-  // coverage for it. Also, the issue doesn't apply to our Emscripten
-  // build in practice since it's single-threaded.
-  void SetUp(void) override {
-    absl::SetMutexDeadlockDetectionMode(absl::OnDeadlockCycle::kIgnore);
-  }
-#endif  // __EMSCRIPTEN__
-
   void SetDelegateForParam(mediapipe::CalculatorGraphConfig_Node* node) {
-    *node->mutable_options()
-         ->MutableExtension(mediapipe::InferenceCalculatorOptions::ext)
-         ->mutable_delegate() = GetParam().delegate;
+    auto options_map = tool::MutableOptionsMap().Initialize(*node);
+    auto options = options_map.Get<mediapipe::InferenceCalculatorOptions>();
+    *options.mutable_delegate() = GetParam().delegate;
+    options_map.Set(options);
   }
 };
 
@@ -170,8 +155,9 @@ TEST_P(InferenceCalculatorTest, TestFaceDetection) {
       detection_packets[0].Get<std::vector<Detection>>();
 #if !defined(MEDIAPIPE_PROTO_LITE)
   // Approximately is not available with lite protos (b/178137094).
-  EXPECT_THAT(dets,
-              ElementsAre(Approximately(EqualsProto(expected_detection))));
+  constexpr float kEpison = 0.001;
+  EXPECT_THAT(dets, ElementsAre(Approximately(EqualsProto(expected_detection),
+                                              kEpison)));
 #endif
 }
 

@@ -1,8 +1,9 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/solutions/vision/object_detector/
 title: Object Detection
-parent: Solutions
-nav_order: 8
+parent: MediaPipe Legacy Solutions
+nav_order: 9
 ---
 
 # MediaPipe Object Detection
@@ -18,7 +19,15 @@ nav_order: 8
 </details>
 ---
 
-![object_detection_android_gpu.gif](../images/mobile/object_detection_android_gpu.gif)
+**Attention:** *Thank you for your interest in MediaPipe Solutions.
+As of March 1, 2023, this solution was upgraded to a new MediaPipe
+Solution. For more information, see the
+[MediaPipe Solutions](https://developers.google.com/mediapipe/solutions/vision/object_detector/)
+site.*
+
+----
+
+![object_detection_android_gpu.gif](https://mediapipe.dev/images/mobile/object_detection_android_gpu.gif)
 
 ## Example Apps
 
@@ -75,7 +84,7 @@ on how to build MediaPipe examples.
 *   With a TFLite Model
 
     This uses the same
-    [TFLite model](https://github.com/google/mediapipe/tree/master/mediapipe/models/ssdlite_object_detection.tflite)
+    [TFLite model](https://storage.googleapis.com/mediapipe-assets/ssdlite_object_detection.tflite)
     (see also
     [model info](https://github.com/google/mediapipe/tree/master/mediapipe/models/object_detection_saved_model/README.md))
     as in [Live Camera Input](#live-camera-input) above. The pipeline is
@@ -108,15 +117,15 @@ on how to build MediaPipe examples.
 *   With a TensorFlow Model
 
     This uses the
-    [TensorFlow model](https://github.com/google/mediapipe/tree/master/mediapipe/models/object_detection_saved_model)
+    [TensorFlow model](https://storage.googleapis.com/mediapipe-assets/object_detection_saved_model/archive.zip)
     ( see also
-    [model info](https://github.com/google/mediapipe/tree/master/mediapipe/models/object_detection_saved_model/README.md)),
+    [model info](https://storage.googleapis.com/mediapipe-assets/object_detection_saved_model/README.md)),
     and the pipeline is implemented in this
     [graph](https://github.com/google/mediapipe/tree/master/mediapipe/graphs/object_detection/object_detection_mobile_cpu.pbtxt).
 
     Note: The following runs TensorFlow inference on CPU. If you would like to
     run inference on GPU (Linux only), please follow
-    [TensorFlow CUDA Support and Setup on Linux Desktop](gpu.md#tensorflow-cuda-support-and-setup-on-linux-desktop)
+    [TensorFlow CUDA Support and Setup on Linux Desktop](../getting_started/gpu_support.md#tensorflow-cuda-support-and-setup-on-linux-desktop)
     instead.
 
     To build the TensorFlow CPU inference example on desktop, run:

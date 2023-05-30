@@ -31,11 +31,24 @@ JNIEXPORT void JNICALL GRAPH_TEXTURE_FRAME_METHOD(nativeReleaseBuffer)(
 JNIEXPORT jint JNICALL GRAPH_TEXTURE_FRAME_METHOD(nativeGetTextureName)(
     JNIEnv* env, jobject thiz, jlong nativeHandle);
 
+JNIEXPORT void JNICALL GRAPH_TEXTURE_FRAME_METHOD(nativeGpuWait)(
+    JNIEnv* env, jobject thiz, jlong nativeHandle);
+
 JNIEXPORT jint JNICALL GRAPH_TEXTURE_FRAME_METHOD(nativeGetWidth)(
     JNIEnv* env, jobject thiz, jlong nativeHandle);
 
 JNIEXPORT jint JNICALL GRAPH_TEXTURE_FRAME_METHOD(nativeGetHeight)(
     JNIEnv* env, jobject thiz, jlong nativeHandle);
+
+JNIEXPORT jlong JNICALL GRAPH_TEXTURE_FRAME_METHOD(
+    nativeCreateSyncTokenForCurrentExternalContext)(JNIEnv* env, jobject thiz,
+                                                    jlong nativeHandle);
+
+JNIEXPORT void JNICALL GRAPH_TEXTURE_FRAME_METHOD(nativeDidRead)(
+    JNIEnv* env, jobject thiz, jlong nativeHandle, jlong consumerSyncToken);
+
+JNIEXPORT jlong JNICALL GRAPH_TEXTURE_FRAME_METHOD(
+    nativeGetCurrentExternalContextHandle)(JNIEnv* env, jobject thiz);
 
 #ifdef __cplusplus
 }  // extern "C"

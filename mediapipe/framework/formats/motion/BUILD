@@ -16,37 +16,27 @@
 # Description:
 #   Working with dense optical flow in mediapipe.
 
+load("//mediapipe/framework/port:build_config.bzl", "mediapipe_proto_library")
+
 licenses(["notice"])
 
-load("//mediapipe/framework/port:build_config.bzl", "mediapipe_cc_proto_library")
+package(default_visibility = ["//visibility:public"])
 
-package(default_visibility = ["//visibility:private"])
-
-proto_library(
+mediapipe_proto_library(
     name = "optical_flow_field_data_proto",
     srcs = ["optical_flow_field_data.proto"],
-    visibility = ["//visibility:public"],
-)
-
-mediapipe_cc_proto_library(
-    name = "optical_flow_field_data_cc_proto",
-    srcs = ["optical_flow_field_data.proto"],
-    visibility = ["//visibility:public"],
-    deps = [":optical_flow_field_data_proto"],
 )
 
 cc_library(
     name = "optical_flow_field",
     srcs = ["optical_flow_field.cc"],
     hdrs = ["optical_flow_field.h"],
-    visibility = [
-        "//visibility:public",
-    ],
     deps = [
+        ":optical_flow_field_data_cc_proto",
         "//mediapipe/framework:type_map",
         "//mediapipe/framework/deps:mathutil",
         "//mediapipe/framework/formats:location",
-        "//mediapipe/framework/formats/motion:optical_flow_field_data_cc_proto",
+        "//mediapipe/framework/formats:location_opencv",
         "//mediapipe/framework/port:file_helpers",
         "//mediapipe/framework/port:integral_types",
         "//mediapipe/framework/port:logging",
@@ -67,11 +57,12 @@ cc_test(
     deps = [
         ":optical_flow_field",
         "//mediapipe/framework/deps:file_path",
-        "//mediapipe/framework/port:commandlineflags",
+        "//mediapipe/framework/formats:location_opencv",
         "//mediapipe/framework/port:file_helpers",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:integral_types",
         "//mediapipe/framework/port:logging",
+        "@com_google_absl//absl/flags:flag",
         "@org_tensorflow//tensorflow/core:framework",
     ],
 )

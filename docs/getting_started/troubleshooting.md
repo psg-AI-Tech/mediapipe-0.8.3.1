@@ -1,5 +1,6 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/framework/getting_started/troubleshooting
 title: Troubleshooting
 parent: Getting Started
 nav_order: 10
@@ -11,6 +12,12 @@ nav_order: 10
 1. TOC
 {:toc}
 ---
+
+**Attention:** *Thanks for your interest in MediaPipe! We have moved to
+[https://developers.google.com/mediapipe](https://developers.google.com/mediapipe)
+as the primary developer documentation site for MediaPipe as of April 3, 2023.*
+
+----
 
 ## Missing Python binary path
 
@@ -65,7 +72,7 @@ WARNING: Download from https://storage.googleapis.com/mirror.tensorflow.org/gith
 ```
 
 usually indicates that Bazel fails to download necessary dependency repositories
-that MediaPipe needs. MedaiPipe has several dependency repositories that are
+that MediaPipe needs. MediaPipe has several dependency repositories that are
 hosted by Google sites. In some regions, you may need to set up a network proxy
 or use a VPN to access those resources. You may also need to append
 `--host_jvm_args "-DsocksProxyHost=<ip address> -DsocksProxyPort=<port number>"`
@@ -96,6 +103,49 @@ take a look at the "Install OpenCV and FFmpeg" sections in
 linux_opencv/macos_opencv/windows_opencv.BUILD files for your local opencv
 libraries. [This GitHub issue](https://github.com/google/mediapipe/issues/666)
 may also help.
+
+## Python pip install failure
+
+The error message:
+
+```
+ERROR: Could not find a version that satisfies the requirement mediapipe
+ERROR: No matching distribution found for mediapipe
+```
+
+after running `pip install mediapipe` usually indicates that there is no qualified MediaPipe Python for your system.
+Please note that MediaPipe Python PyPI officially supports the **64-bit**
+version of Python 3.7 to 3.10 on the following OS:
+
+-   x86_64 Linux
+-   x86_64 macOS 10.15+
+-   amd64 Windows
+
+If the OS is currently supported and you still see this error, please make sure
+that both the Python and pip binary are for Python 3.7 to 3.10. Otherwise,
+please consider building the MediaPipe Python package locally by following the
+instructions [here](python.md#building-mediapipe-python-package).
+
+## Python DLL load failure on Windows
+
+The error message:
+
+```
+ImportError: DLL load failed: The specified module could not be found
+```
+
+usually indicates that the local Windows system is missing Visual C++
+redistributable packages and/or Visual C++ runtime DLLs. This can be solved by
+either installing the official
+[vc_redist.x64.exe](https://support.microsoft.com/en-us/topic/the-latest-supported-visual-c-downloads-2647da03-1eea-4433-9aff-95f26a218cc0)
+or installing the "msvc-runtime" Python package by running
+
+```bash
+$ python -m pip install msvc-runtime
+```
+
+Please note that the "msvc-runtime" Python package is not released or maintained
+by Microsoft.
 
 ## Native method not found
 

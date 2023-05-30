@@ -37,6 +37,9 @@ constexpr char kNormRectTag[] = "NORM_RECT";
 constexpr char kRectsTag[] = "RECTS";
 constexpr char kNormRectsTag[] = "NORM_RECTS";
 
+using ::mediapipe::NormalizedRect;
+using ::mediapipe::Rect;
+
 constexpr float kMinFloat = std::numeric_limits<float>::lowest();
 constexpr float kMaxFloat = std::numeric_limits<float>::max();
 
@@ -203,6 +206,9 @@ absl::Status DetectionsToRectsCalculator::Process(CalculatorContext* cc) {
       cc->Inputs().Tag(kDetectionsTag).IsEmpty()) {
     return absl::OkStatus();
   }
+  if (rotate_ && !HasTagValue(cc, kImageSizeTag)) {
+    return absl::OkStatus();
+  }
 
   std::vector<Detection> detections;
   if (cc->Inputs().HasTag(kDetectionTag)) {
@@ -323,7 +329,7 @@ absl::Status DetectionsToRectsCalculator::ComputeRotation(
 DetectionSpec DetectionsToRectsCalculator::GetDetectionSpec(
     const CalculatorContext* cc) {
   absl::optional<std::pair<int, int>> image_size;
-  if (cc->Inputs().HasTag(kImageSizeTag)) {
+  if (HasTagValue(cc->Inputs(), kImageSizeTag)) {
     image_size = cc->Inputs().Tag(kImageSizeTag).Get<std::pair<int, int>>();
   }
 

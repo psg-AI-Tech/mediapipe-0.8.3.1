@@ -24,10 +24,6 @@
 
 @class MPPGraph;
 
-namespace mediapipe {
-struct GpuSharedData;
-}  // namespace mediapipe
-
 /// A delegate that can receive frames from a MediaPipe graph.
 @protocol MPPGraphDelegate <NSObject>
 
@@ -59,16 +55,21 @@ typedef NS_ENUM(int, MPPPacketType) {
   /// Calls mediapipeGraph:didOutputPacket:fromStream:
   MPPPacketTypeRaw,
 
-  /// CFHolder<CVPixelBufferRef>.
+  /// GpuBuffer packet.
   /// Calls mediapipeGraph:didOutputPixelBuffer:fromStream:
   /// Use this packet type to pass GPU frames to calculators.
   MPPPacketTypePixelBuffer,
 
-  /// ImageFrame.
+  /// Image packet.
+  /// Calls mediapipeGraph:didOutputPixelBuffer:fromStream:
+  /// Use this packet type to pass GPU frames to calculators.
+  MPPPacketTypeImage,
+
+  /// ImageFrame packet.
   /// Calls mediapipeGraph:didOutputPixelBuffer:fromStream:
   MPPPacketTypeImageFrame,
 
-  /// RGBA ImageFrame, but do not swap the channels if the input pixel buffer
+  /// RGBA ImageFrame packet, but do not swap the channels if the input pixel buffer
   /// is BGRA. This is useful when the graph needs RGBA ImageFrames, but the
   /// calculators do not care about the order of the channels, so BGRA data can
   /// be used as-is.
@@ -163,6 +164,9 @@ typedef NS_ENUM(int, MPPPacketType) {
 /// Creates a MediaPipe packet wrapping the given pixelBuffer;
 - (mediapipe::Packet)packetWithPixelBuffer:(CVPixelBufferRef)pixelBuffer
                                 packetType:(MPPPacketType)packetType;
+
+/// Creates a MediaPipe packet of type Image, wrapping the given CVPixelBufferRef.
+- (mediapipe::Packet)imagePacketWithPixelBuffer:(CVPixelBufferRef)pixelBuffer;
 
 /// Sends a pixel buffer into a graph input stream, using the specified packet
 /// type. The graph must have been started before calling this. Drops frames and

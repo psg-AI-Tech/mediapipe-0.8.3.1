@@ -1,5 +1,6 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/framework/getting_started/hello_world_cpp
 title: Hello World! in C++
 parent: MediaPipe in C++
 grand_parent: Getting Started
@@ -12,6 +13,12 @@ nav_order: 1
 1. TOC
 {:toc}
 ---
+
+**Attention:** *Thanks for your interest in MediaPipe! We have moved to
+[https://developers.google.com/mediapipe](https://developers.google.com/mediapipe)
+as the primary developer documentation site for MediaPipe as of April 3, 2023.*
+
+----
 
 1.  Ensure you have a working version of MediaPipe. See
     [installation instructions](./install.md).
@@ -85,7 +92,7 @@ nav_order: 1
     This graph consists of 1 graph input stream (`in`) and 1 graph output stream
     (`out`), and 2 [`PassThroughCalculator`]s connected serially.
 
-    ![hello_world graph](../images/hello_world.png)
+    ![hello_world graph](https://mediapipe.dev/images/hello_world.png)
 
 4.  Before running the graph, an `OutputStreamPoller` object is connected to the
     output stream in order to later retrieve the graph output, and a graph run

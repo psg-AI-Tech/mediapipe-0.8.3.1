@@ -14,6 +14,8 @@
 
 #include "mediapipe/framework/validated_graph_config.h"
 
+#include <memory>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -21,6 +23,7 @@
 #include "absl/strings/substitute.h"
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_base.h"
+#include "mediapipe/framework/graph_service_manager.h"
 #include "mediapipe/framework/legacy_calculator_support.h"
 #include "mediapipe/framework/packet_generator.h"
 #include "mediapipe/framework/packet_generator.pb.h"
@@ -48,7 +51,7 @@ namespace mediapipe {
 
 namespace {
 
-// Create a debug std::string name for a set of edge.  An edge can be either
+// Create a debug string name for a set of edge.  An edge can be either
 // a stream or a side packet.
 std::string DebugEdgeNames(
     const std::string& edge_type,
@@ -136,33 +139,6 @@ absl::Status AddPredefinedExecutorConfigs(CalculatorGraphConfig* graph_config) {
       graph_config->clear_num_threads();
     }
   }
-  return absl::OkStatus();
-}
-
-absl::Status PerformBasicTransforms(
-    const CalculatorGraphConfig& input_graph_config,
-    const GraphRegistry* graph_registry,
-    CalculatorGraphConfig* output_graph_config) {
-  *output_graph_config = input_graph_config;
-  MP_RETURN_IF_ERROR(
-      tool::ExpandSubgraphs(output_graph_config, graph_registry));
-
-  MP_RETURN_IF_ERROR(AddPredefinedExecutorConfigs(output_graph_config));
-
-  // Populate each node with the graph level input stream handler if a
-  // stream handler wasn't explicitly provided.
-  // TODO Instead of pre-populating, handle the graph level
-  // default appropriately within CalculatorGraph.
-  if (output_graph_config->has_input_stream_handler()) {
-    const auto& graph_level_input_stream_handler =
-        output_graph_config->input_stream_handler();
-    for (auto& node : *output_graph_config->mutable_node()) {
-      if (!node.has_input_stream_handler()) {
-        *node.mutable_input_stream_handler() = graph_level_input_stream_handler;
-      }
-    }
-  }
-
   return absl::OkStatus();
 }
 
@@ -277,7 +253,7 @@ absl::Status NodeTypeInfo::Initialize(
     const PacketGeneratorConfig& node, int node_index) {
   node_.type = NodeType::PACKET_GENERATOR;
   node_.index = node_index;
-  MP_RETURN_IF_ERROR(contract_.Initialize(node));
+  MP_RETURN_IF_ERROR(contract_.Initialize(node, validated_graph.Package()));
 
   // Run FillExpectations.
   const std::string& node_class = node.packet_generator();
@@ -343,8 +319,9 @@ absl::Status NodeTypeInfo::Initialize(
 }
 
 absl::Status ValidatedGraphConfig::Initialize(
-    const CalculatorGraphConfig& input_config,
-    const GraphRegistry* graph_registry) {
+    CalculatorGraphConfig input_config, const GraphRegistry* graph_registry,
+    const Subgraph::SubgraphOptions* graph_options,
+    const GraphServiceManager* service_manager) {
   RET_CHECK(!initialized_)
       << "ValidatedGraphConfig can be initialized only once.";
 
@@ -353,9 +330,9 @@ absl::Status ValidatedGraphConfig::Initialize(
           << input_config.DebugString();
 #endif
 
+  config_ = std::move(input_config);
   MP_RETURN_IF_ERROR(
-      PerformBasicTransforms(input_config, graph_registry, &config_));
-
+      PerformBasicTransforms(graph_registry, graph_options, service_manager));
   // Initialize the basic node information.
   MP_RETURN_IF_ERROR(InitializeGeneratorInfo());
   MP_RETURN_IF_ERROR(InitializeCalculatorInfo());
@@ -392,6 +369,7 @@ absl::Status ValidatedGraphConfig::Initialize(
     input_side_packets_.clear();
     output_side_packets_.clear();
     stream_to_producer_.clear();
+    output_streams_to_consumer_nodes_.clear();
     input_streams_.clear();
     output_streams_.clear();
     owned_packet_types_.clear();
@@ -408,8 +386,11 @@ absl::Status ValidatedGraphConfig::Initialize(
 
   // Set Any types based on what they connect to.
   MP_RETURN_IF_ERROR(ResolveAnyTypes(&input_streams_, &output_streams_));
+  MP_RETURN_IF_ERROR(ResolveOneOfTypes(&input_streams_, &output_streams_));
   MP_RETURN_IF_ERROR(
       ResolveAnyTypes(&input_side_packets_, &output_side_packets_));
+  MP_RETURN_IF_ERROR(
+      ResolveOneOfTypes(&input_side_packets_, &output_side_packets_));
 
   // Validate consistency of side packets and streams.
   MP_RETURN_IF_ERROR(ValidateSidePacketTypes());
@@ -428,19 +409,30 @@ absl::Status ValidatedGraphConfig::Initialize(
 }
 
 absl::Status ValidatedGraphConfig::Initialize(
-    const std::string& graph_type, const Subgraph::SubgraphOptions* options,
-    const GraphRegistry* graph_registry) {
+    const std::string& graph_type, const GraphRegistry* graph_registry,
+    const Subgraph::SubgraphOptions* graph_options,
+    const GraphServiceManager* service_manager) {
   graph_registry =
       graph_registry ? graph_registry : &GraphRegistry::global_graph_registry;
-  auto status_or_config = graph_registry->CreateByName("", graph_type, options);
+  Subgraph::SubgraphOptions local_graph_options;
+  if (graph_options) {
+    local_graph_options = *graph_options;
+  }
+  SubgraphContext subgraph_context =
+      SubgraphContext(&local_graph_options, service_manager);
+  auto status_or_config =
+      graph_registry->CreateByName("", graph_type, &subgraph_context);
   MP_RETURN_IF_ERROR(status_or_config.status());
-  return Initialize(status_or_config.value(), graph_registry);
+  return Initialize(status_or_config.value(), graph_registry, graph_options,
+                    service_manager);
 }
 
 absl::Status ValidatedGraphConfig::Initialize(
     const std::vector<CalculatorGraphConfig>& input_configs,
     const std::vector<CalculatorGraphTemplate>& input_templates,
-    const std::string& graph_type, const Subgraph::SubgraphOptions* options) {
+    const std::string& graph_type,
+    const Subgraph::SubgraphOptions* graph_options,
+    const GraphServiceManager* service_manager) {
   GraphRegistry graph_registry;
   for (auto& config : input_configs) {
     graph_registry.Register(config.type(), config);
@@ -448,7 +440,34 @@ absl::Status ValidatedGraphConfig::Initialize(
   for (auto& templ : input_templates) {
     graph_registry.Register(templ.config().type(), templ);
   }
-  return Initialize(graph_type, options, &graph_registry);
+  return Initialize(graph_type, &graph_registry, graph_options,
+                    service_manager);
+}
+
+absl::Status ValidatedGraphConfig::PerformBasicTransforms(
+    const GraphRegistry* graph_registry,
+    const Subgraph::SubgraphOptions* graph_options,
+    const GraphServiceManager* service_manager) {
+  MP_RETURN_IF_ERROR(tool::ExpandSubgraphs(&config_, graph_registry,
+                                           graph_options, service_manager));
+
+  MP_RETURN_IF_ERROR(AddPredefinedExecutorConfigs(&config_));
+
+  // Populate each node with the graph level input stream handler if a
+  // stream handler wasn't explicitly provided.
+  // TODO Instead of pre-populating, handle the graph level
+  // default appropriately within CalculatorGraph.
+  if (config_.has_input_stream_handler()) {
+    const auto& graph_level_input_stream_handler =
+        config_.input_stream_handler();
+    for (auto& node : *config_.mutable_node()) {
+      if (!node.has_input_stream_handler()) {
+        *node.mutable_input_stream_handler() = graph_level_input_stream_handler;
+      }
+    }
+  }
+
+  return absl::OkStatus();
 }
 
 absl::Status ValidatedGraphConfig::InitializeCalculatorInfo() {
@@ -675,6 +694,7 @@ absl::Status ValidatedGraphConfig::AddInputStreamsForNode(
         if (!need_sorting_ptr) {
           LOG(WARNING) << "Input Stream \"" << name
                        << "\" for node with sorted index " << node_index
+                       << " name " << node_type_info->Contract().GetNodeName()
                        << " is marked as a back edge, but its output stream is "
                           "already available.  This means it was not necessary "
                           "to mark it as a back edge.";
@@ -686,6 +706,7 @@ absl::Status ValidatedGraphConfig::AddInputStreamsForNode(
       if (edge_info.back_edge) {
         VLOG(1) << "Encountered expected behavior: the back edge \"" << name
                 << "\" for node with (possibly sorted) index " << node_index
+                << " name " << node_type_info->Contract().GetNodeName()
                 << " has an output stream which we have not yet seen.";
       } else if (need_sorting_ptr) {
         *need_sorting_ptr = true;
@@ -694,7 +715,18 @@ absl::Status ValidatedGraphConfig::AddInputStreamsForNode(
       } else {
         return mediapipe::UnknownErrorBuilder(MEDIAPIPE_LOC)
                << "Input Stream \"" << name << "\" for node with sorted index "
-               << node_index << " does not have a corresponding output stream.";
+               << node_index << " name "
+               << node_type_info->Contract().GetNodeName()
+               << " does not have a corresponding output stream.";
+      }
+    }
+    // Add this node as a consumer of this edge's output stream.
+    if (edge_info.upstream > -1) {
+      auto parent_node = output_streams_[edge_info.upstream].parent_node;
+      if (parent_node.type == NodeTypeInfo::NodeType::CALCULATOR) {
+        int this_idx = node_type_info->Node().index;
+        output_streams_to_consumer_nodes_[edge_info.upstream].push_back(
+            this_idx);
       }
     }
 
@@ -896,6 +928,29 @@ absl::Status ValidatedGraphConfig::ResolveAnyTypes(
   return absl::OkStatus();
 }
 
+absl::Status ValidatedGraphConfig::ResolveOneOfTypes(
+    std::vector<EdgeInfo>* input_edges, std::vector<EdgeInfo>* output_edges) {
+  for (EdgeInfo& input_edge : *input_edges) {
+    if (input_edge.upstream == -1) {
+      continue;
+    }
+    EdgeInfo& output_edge = (*output_edges)[input_edge.upstream];
+    PacketType* input_root = input_edge.packet_type->GetSameAs();
+    PacketType* output_root = output_edge.packet_type->GetSameAs();
+    if (!input_root->IsConsistentWith(*output_root)) continue;
+    // We narrow down OneOf types here if the other side is a single type.
+    // We do not currently intersect multiple OneOf types.
+    // Note that this is sensitive to the order edges are examined.
+    // TODO: we should be more thorough.
+    if (input_root->IsOneOf() && output_root->IsExactType()) {
+      input_root->SetSameAs(output_edge.packet_type);
+    } else if (output_root->IsOneOf() && input_root->IsExactType()) {
+      output_root->SetSameAs(input_edge.packet_type);
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ValidatedGraphConfig::ValidateStreamTypes() {
   for (const EdgeInfo& stream : input_streams_) {
     RET_CHECK_NE(stream.upstream, -1);
@@ -1003,6 +1058,14 @@ absl::Status ValidatedGraphConfig::ValidateRequiredSidePacketTypes(
   for (const auto& required_item : required_side_packets_) {
     auto iter = side_packet_types.find(required_item.first);
     if (iter == side_packet_types.end()) {
+      bool is_optional = true;
+      for (int index : required_item.second) {
+        is_optional &= input_side_packets_[index].packet_type->IsOptional();
+      }
+      if (is_optional) {
+        // Side packets that are optional and not provided are ignored.
+        continue;
+      }
       statuses.push_back(mediapipe::InvalidArgumentErrorBuilder(MEDIAPIPE_LOC)
                          << "Side packet \"" << required_item.first
                          << "\" is required but was not provided.");

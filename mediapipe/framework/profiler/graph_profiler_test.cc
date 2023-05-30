@@ -28,7 +28,6 @@
 #include "mediapipe/framework/tool/simulation_clock.h"
 #include "mediapipe/framework/tool/tag_map_helper.h"
 
-using ::testing::EqualsProto;
 using ::testing::proto::Partially;
 
 namespace mediapipe {
@@ -40,13 +39,15 @@ constexpr char kDummyTestCalculatorName[] = "DummyTestCalculator";
 CalculatorGraphConfig::Node CreateNodeConfig(
     const std::string& raw_node_config) {
   CalculatorGraphConfig::Node node_config;
-  QCHECK(proto2::TextFormat::ParseFromString(raw_node_config, &node_config));
+  QCHECK(google::protobuf::TextFormat::ParseFromString(raw_node_config,
+                                                       &node_config));
   return node_config;
 }
 
 CalculatorGraphConfig CreateGraphConfig(const std::string& raw_graph_config) {
   CalculatorGraphConfig graph_config;
-  QCHECK(proto2::TextFormat::ParseFromString(raw_graph_config, &graph_config));
+  QCHECK(google::protobuf::TextFormat::ParseFromString(raw_graph_config,
+                                                       &graph_config));
   return graph_config;
 }
 
@@ -249,7 +250,7 @@ TEST_F(GraphProfilerTestPeer, InitializeConfig) {
   // Checks histogram_interval_size_usec and num_histogram_intervals.
   CalculatorProfile actual =
       GetCalculatorProfilesMap()->find(kDummyTestCalculatorName)->second;
-  EXPECT_THAT(actual, EqualsProto(R"(
+  EXPECT_THAT(actual, EqualsProto(R"pb(
                 name: "DummyTestCalculator"
                 process_runtime {
                   total: 0
@@ -287,7 +288,7 @@ TEST_F(GraphProfilerTestPeer, InitializeConfig) {
                     count: 0
                   }
                 }
-              )"));
+              )pb"));
 }
 
 // Tests that Initialize() uses the ProfilerConfig in the graph definition.
@@ -313,7 +314,7 @@ TEST_F(GraphProfilerTestPeer, InitializeConfigWithoutStreamLatency) {
   // Checks histogram_interval_size_usec and num_histogram_intervals.
   CalculatorProfile actual =
       GetCalculatorProfilesMap()->find(kDummyTestCalculatorName)->second;
-  EXPECT_THAT(actual, EqualsProto(R"(
+  EXPECT_THAT(actual, EqualsProto(R"pb(
                 name: "DummyTestCalculator"
                 process_runtime {
                   total: 0
@@ -323,7 +324,7 @@ TEST_F(GraphProfilerTestPeer, InitializeConfigWithoutStreamLatency) {
                   count: 0
                   count: 0
                 }
-              )"));
+              )pb"));
 }
 
 // Tests that Initialize() reads all the configs defined in the graph
@@ -443,6 +444,32 @@ TEST_F(GraphProfilerTestPeer, InitializeMultipleTimes) {
                "Cannot initialize .* multiple times.");
 }
 
+// Tests that graph identifiers are not reused, even after destruction.
+TEST_F(GraphProfilerTestPeer, InitializeMultipleProfilers) {
+  auto raw_graph_config = R"(
+    profiler_config {
+      enable_profiler: true
+    }
+    input_stream: "input_stream"
+    node {
+      calculator: "DummyTestCalculator"
+      input_stream: "input_stream"
+    })";
+  const int n_iterations = 100;
+  absl::flat_hash_set<int> seen_ids;
+  for (int i = 0; i < n_iterations; ++i) {
+    std::shared_ptr<ProfilingContext> profiler =
+        std::make_shared<ProfilingContext>();
+    auto graph_config = CreateGraphConfig(raw_graph_config);
+    mediapipe::ValidatedGraphConfig validated_graph;
+    QCHECK_OK(validated_graph.Initialize(graph_config));
+    profiler->Initialize(validated_graph);
+
+    int id = profiler->GetGraphId();
+    ASSERT_THAT(seen_ids, testing::Not(testing::Contains(id)));
+    seen_ids.insert(id);
+  }
+}
 // Tests that Pause(), Resume(), and Reset() works.
 TEST_F(GraphProfilerTestPeer, PauseResumeReset) {
   InitializeProfilerWithGraphConfig(R"(
@@ -654,11 +681,11 @@ TEST_F(GraphProfilerTestPeer, SetOpenRuntime) {
   simulation_clock->ThreadFinish();
 
   ASSERT_EQ(profiles.size(), 1);
-  EXPECT_THAT(profiles[0], Partially(EqualsProto(R"(
+  EXPECT_THAT(profiles[0], Partially(EqualsProto(R"pb(
                 name: "DummyTestCalculator"
                 open_runtime: 100
                 process_runtime { total: 0 }
-              )")));
+              )pb")));
   // Checks packets_info_ map hasn't changed.
   ASSERT_EQ(GetPacketsInfoMap()->size(), 0);
 }
@@ -711,7 +738,7 @@ TEST_F(GraphProfilerTestPeer, SetOpenRuntimeWithStreamLatency) {
   CalculatorProfile source_profile =
       GetProfileWithName(profiles, "source_calc");
 
-  EXPECT_THAT(source_profile, EqualsProto(R"(
+  EXPECT_THAT(source_profile, EqualsProto(R"pb(
                 name: "source_calc"
                 open_runtime: 150
                 process_runtime {
@@ -732,7 +759,7 @@ TEST_F(GraphProfilerTestPeer, SetOpenRuntimeWithStreamLatency) {
                   num_intervals: 1
                   count: 0
                 }
-              )"));
+              )pb"));
 
   // Check packets_info_ map has been updated.
   ASSERT_EQ(GetPacketsInfoMap()->size(), 1);
@@ -773,7 +800,7 @@ TEST_F(GraphProfilerTestPeer, SetCloseRuntime) {
   std::vector<CalculatorProfile> profiles = Profiles();
   simulation_clock->ThreadFinish();
 
-  EXPECT_THAT(profiles[0], EqualsProto(R"(
+  EXPECT_THAT(profiles[0], EqualsProto(R"pb(
                 name: "DummyTestCalculator"
                 close_runtime: 100
                 process_runtime {
@@ -782,7 +809,7 @@ TEST_F(GraphProfilerTestPeer, SetCloseRuntime) {
                   num_intervals: 1
                   count: 0
                 }
-              )"));
+              )pb"));
 }
 
 // Tests that SetCloseRuntime() updates |close_runtime| and doesn't affect other
@@ -832,7 +859,7 @@ TEST_F(GraphProfilerTestPeer, SetCloseRuntimeWithStreamLatency) {
   CalculatorProfile source_profile =
       GetProfileWithName(profiles, "source_calc");
 
-  EXPECT_THAT(source_profile, EqualsProto(R"(
+  EXPECT_THAT(source_profile, EqualsProto(R"pb(
                 name: "source_calc"
                 close_runtime: 100
                 process_runtime {
@@ -863,7 +890,7 @@ TEST_F(GraphProfilerTestPeer, SetCloseRuntimeWithStreamLatency) {
                     count: 0
                   }
                 }
-              )"));
+              )pb"));
   PacketInfo expected_packet_info = {0,
                                      /*production_time_usec=*/1000 + 100,
                                      /*source_process_start_usec=*/1000 + 0};
@@ -1003,7 +1030,7 @@ TEST_F(GraphProfilerTestPeer, AddProcessSample) {
   simulation_clock->ThreadFinish();
 
   ASSERT_EQ(profiles.size(), 1);
-  EXPECT_THAT(profiles[0], EqualsProto(R"(
+  EXPECT_THAT(profiles[0], EqualsProto(R"pb(
                 name: "DummyTestCalculator"
                 process_runtime {
                   total: 150
@@ -1011,7 +1038,7 @@ TEST_F(GraphProfilerTestPeer, AddProcessSample) {
                   num_intervals: 1
                   count: 1
                 }
-              )"));
+              )pb"));
   // Checks packets_info_ map hasn't changed.
   ASSERT_EQ(GetPacketsInfoMap()->size(), 0);
 }
@@ -1061,7 +1088,7 @@ TEST_F(GraphProfilerTestPeer, AddProcessSampleWithStreamLatency) {
   CalculatorProfile source_profile =
       GetProfileWithName(profiles, "source_calc");
 
-  EXPECT_THAT(profiles[0], Partially(EqualsProto(R"(
+  EXPECT_THAT(profiles[0], Partially(EqualsProto(R"pb(
                 process_runtime {
                   total: 150
                   interval_size_usec: 1000000
@@ -1080,7 +1107,7 @@ TEST_F(GraphProfilerTestPeer, AddProcessSampleWithStreamLatency) {
                   num_intervals: 1
                   count: 1
                 }
-              )")));
+              )pb")));
 
   // Check packets_info_ map has been updated.
   ASSERT_EQ(GetPacketsInfoMap()->size(), 1);
@@ -1114,7 +1141,7 @@ TEST_F(GraphProfilerTestPeer, AddProcessSampleWithStreamLatency) {
   // 1000 process output latency total = 2000 (end) + 250 - 1000 (when source
   // started) = 1250 For "stream_0" should have not changed since it was empty.
   // For "stream_1" = 2000 (end) - 1250 (when source finished) = 850
-  EXPECT_THAT(consumer_profile, Partially(EqualsProto(R"(
+  EXPECT_THAT(consumer_profile, Partially(EqualsProto(R"pb(
                 name: "consumer_calc"
                 process_input_latency { total: 1000 }
                 process_output_latency { total: 1250 }
@@ -1126,7 +1153,7 @@ TEST_F(GraphProfilerTestPeer, AddProcessSampleWithStreamLatency) {
                   name: "stream_1"
                   latency { total: 850 }
                 }
-              )")));
+              )pb")));
 
   // Check packets_info_ map for PacketId({"stream_1", 100}) should not yet be
   // garbage collected.
@@ -1142,7 +1169,7 @@ TEST_F(GraphProfilerTestPeer, AddProcessSampleWithStreamLatency) {
 TEST(GraphProfilerTest, ParallelReads) {
   // A graph that processes a certain number of packets before finishing.
   CalculatorGraphConfig config;
-  QCHECK(proto2::TextFormat::ParseFromString(R"(
+  QCHECK(google::protobuf::TextFormat::ParseFromString(R"(
     profiler_config {
      enable_profiler: true
     }
@@ -1164,7 +1191,7 @@ TEST(GraphProfilerTest, ParallelReads) {
     }
     output_stream: "OUT:0:the_integers"
     )",
-                                             &config));
+                                                       &config));
 
   // Start running the graph on its own threads.
   absl::Mutex out_1_mutex;
@@ -1203,6 +1230,113 @@ TEST(GraphProfilerTest, ParallelReads) {
     LOG(FATAL) << "Unexpected profile name " << profiles[0].name();
   }
   EXPECT_EQ(1001, out_1_packets.size());
+}
+
+// Returns the set of calculator names in a GraphProfile captured from
+// CalculatorGraph initialized from a certain CalculatorGraphConfig.
+std::set<std::string> GetCalculatorNames(const CalculatorGraphConfig& config) {
+  std::set<std::string> result;
+  CalculatorGraph graph;
+  MP_EXPECT_OK(graph.Initialize(config));
+  GraphProfile profile;
+  MP_EXPECT_OK(graph.profiler()->CaptureProfile(&profile));
+  for (auto& p : profile.calculator_profiles()) {
+    result.insert(p.name());
+  }
+  return result;
+}
+
+TEST(GraphProfilerTest, CalculatorProfileFilter) {
+  CalculatorGraphConfig config;
+  QCHECK(google::protobuf::TextFormat::ParseFromString(R"(
+    profiler_config {
+     enable_profiler: true
+    }
+    node {
+      calculator: "RangeCalculator"
+      input_side_packet: "range_step"
+      output_stream: "out"
+      output_stream: "sum"
+      output_stream: "mean"
+    }
+    node {
+      calculator: "PassThroughCalculator"
+      input_stream: "out"
+      input_stream: "sum"
+      input_stream: "mean"
+      output_stream: "out_1"
+      output_stream: "sum_1"
+      output_stream: "mean_1"
+    }
+    output_stream: "OUT:0:the_integers"
+    )",
+                                                       &config));
+
+  std::set<std::string> expected_names;
+  expected_names = {"RangeCalculator", "PassThroughCalculator"};
+  EXPECT_EQ(GetCalculatorNames(config), expected_names);
+
+  *config.mutable_profiler_config()->mutable_calculator_filter() =
+      "RangeCalculator";
+  expected_names = {"RangeCalculator"};
+  EXPECT_EQ(GetCalculatorNames(config), expected_names);
+
+  *config.mutable_profiler_config()->mutable_calculator_filter() = "Range.*";
+  expected_names = {"RangeCalculator"};
+  EXPECT_EQ(GetCalculatorNames(config), expected_names);
+
+  *config.mutable_profiler_config()->mutable_calculator_filter() =
+      ".*Calculator";
+  expected_names = {"RangeCalculator", "PassThroughCalculator"};
+  EXPECT_EQ(GetCalculatorNames(config), expected_names);
+
+  *config.mutable_profiler_config()->mutable_calculator_filter() = ".*Clock.*";
+  expected_names = {};
+  EXPECT_EQ(GetCalculatorNames(config), expected_names);
+}
+
+TEST(GraphProfilerTest, CaptureProfilePopulateConfig) {
+  CalculatorGraphConfig config;
+  QCHECK(google::protobuf::TextFormat::ParseFromString(R"(
+    profiler_config {
+      enable_profiler: true
+      trace_enabled: true
+    }
+    input_stream: "input_stream"
+    node {
+      calculator: "DummyTestCalculator"
+      input_stream: "input_stream"
+    }
+    node {
+      calculator: "DummyTestCalculator"
+      input_stream: "input_stream"
+    }
+    )",
+                                                       &config));
+  CalculatorGraph graph;
+  MP_ASSERT_OK(graph.Initialize(config));
+  GraphProfile profile;
+  MP_ASSERT_OK(
+      graph.profiler()->CaptureProfile(&profile, PopulateGraphConfig::kFull));
+  EXPECT_THAT(profile.config(), Partially(EqualsProto(R"pb(
+                input_stream: "input_stream"
+                node {
+                  name: "DummyTestCalculator_1"
+                  calculator: "DummyTestCalculator"
+                  input_stream: "input_stream"
+                }
+                node {
+                  name: "DummyTestCalculator_2"
+                  calculator: "DummyTestCalculator"
+                  input_stream: "input_stream"
+                }
+              )pb")));
+  EXPECT_THAT(profile.graph_trace(),
+              ElementsAre(Partially(EqualsProto(
+                  R"pb(
+                    calculator_name: "DummyTestCalculator_1"
+                    calculator_name: "DummyTestCalculator_2"
+                  )pb"))));
 }
 
 }  // namespace

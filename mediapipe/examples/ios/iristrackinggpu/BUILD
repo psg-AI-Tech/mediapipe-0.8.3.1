@@ -24,7 +24,7 @@ load(
 
 licenses(["notice"])
 
-MIN_IOS_VERSION = "10.0"
+MIN_IOS_VERSION = "11.0"
 
 alias(
     name = "iristrackinggpu",
@@ -62,18 +62,18 @@ objc_library(
     copts = ["-std=c++17"],
     data = [
         "//mediapipe/graphs/iris_tracking:iris_tracking_gpu.binarypb",
-        "//mediapipe/modules/face_detection:face_detection_front.tflite",
+        "//mediapipe/modules/face_detection:face_detection_short_range.tflite",
         "//mediapipe/modules/face_landmark:face_landmark.tflite",
         "//mediapipe/modules/iris_landmark:iris_landmark.tflite",
     ],
     deps = [
         "//mediapipe/examples/ios/common:CommonMediaPipeAppLibrary",
+        "//mediapipe/framework/formats:landmark_cc_proto",
     ] + select({
         "//mediapipe:ios_i386": [],
         "//mediapipe:ios_x86_64": [],
         "//conditions:default": [
             "//mediapipe/graphs/iris_tracking:iris_tracking_gpu_deps",
-            "//mediapipe/framework/formats:landmark_cc_proto",
         ],
     }),
 )

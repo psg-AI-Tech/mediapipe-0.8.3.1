@@ -18,6 +18,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.flogger.FluentLogger;
 import com.google.mediapipe.proto.CalculatorProto.CalculatorGraphConfig;
 import com.google.mediapipe.proto.GraphTemplateProto.CalculatorGraphTemplate;
+import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -33,8 +34,8 @@ public class Graph {
   private static final FluentLogger logger = FluentLogger.forEnclosingClass();
   private static final int MAX_BUFFER_SIZE = 20;
   private long nativeGraphHandle;
-  // Hold the references to callbacks.
-  private final List<PacketCallback> packetCallbacks = new ArrayList<>();
+  // Hold the references to callbacks (PacketCallback and PacketListCallback).
+  private final List<Object> callbacks = new ArrayList<>();
   // Side packets used for running the graph.
   private Map<String, Packet> sidePackets = new HashMap<>();
   // Stream headers used for running the graph.
@@ -123,19 +124,30 @@ public class Graph {
 
   /**
    * Returns the canonicalized CalculatorGraphConfig with subgraphs and graph templates expanded.
+   *
+   * <p>Additionally allows specifying an extension registry so that proto extensions will be parsed
+   * correctly.
    */
-  public synchronized CalculatorGraphConfig getCalculatorGraphConfig() {
+  public synchronized CalculatorGraphConfig getCalculatorGraphConfig(
+      ExtensionRegistryLite registry) {
     Preconditions.checkState(
         nativeGraphHandle != 0, "Invalid context, tearDown() might have been called already.");
     byte[] data = nativeGetCalculatorGraphConfig(nativeGraphHandle);
     if (data != null) {
       try {
-        return CalculatorGraphConfig.parseFrom(data);
+        return CalculatorGraphConfig.parseFrom(data, registry);
       } catch (InvalidProtocolBufferException e) {
         throw new RuntimeException(e);
       }
     }
     return null;
+  }
+
+  /**
+   * Returns the canonicalized CalculatorGraphConfig with subgraphs and graph templates expanded.
+   */
+  public synchronized CalculatorGraphConfig getCalculatorGraphConfig() {
+    return getCalculatorGraphConfig(ProtoUtil.getExtensionRegistry());
   }
 
   /**
@@ -151,8 +163,43 @@ public class Graph {
     Preconditions.checkNotNull(streamName);
     Preconditions.checkNotNull(callback);
     Preconditions.checkState(!graphRunning && !startRunningGraphCalled);
-    packetCallbacks.add(callback);
+    callbacks.add(callback);
     nativeAddPacketCallback(nativeGraphHandle, streamName, callback);
+  }
+
+  /**
+   * Adds a {@link PacketListCallback} to the context for callback during graph running.
+   *
+   * @param streamNames The output stream names in the graph for callback.
+   * @param callback The callback for handling the call when all output streams listed in
+   *     streamNames get {@link Packet}.
+   * @throws MediaPipeException for any error status.
+   */
+  public synchronized void addMultiStreamCallback(
+      List<String> streamNames, PacketListCallback callback) {
+    addMultiStreamCallback(streamNames, callback, false);
+  }
+
+  /**
+   * Adds a {@link PacketListCallback} to the context for callback during graph running.
+   *
+   * @param streamNames The output stream names in the graph for callback.
+   * @param callback The callback for handling the call when all output streams listed in
+   *     streamNames get {@link Packet}.
+   * @param observeTimestampBounds Whether to output an empty packet when a timestamp bound change
+   *     is observed with no output data. This can happen when an input packet is processed but no
+   *     corresponding output packet is immediately generated.
+   * @throws MediaPipeException for any error status.
+   */
+  public synchronized void addMultiStreamCallback(
+      List<String> streamNames, PacketListCallback callback, boolean observeTimestampBounds) {
+    Preconditions.checkState(
+        nativeGraphHandle != 0, "Invalid context, tearDown() might have been called already.");
+    Preconditions.checkNotNull(streamNames);
+    Preconditions.checkNotNull(callback);
+    Preconditions.checkState(!graphRunning && !startRunningGraphCalled);
+    callbacks.add(callback);
+    nativeAddMultiStreamCallback(nativeGraphHandle, streamNames, callback, observeTimestampBounds);
   }
 
   /**
@@ -161,7 +208,7 @@ public class Graph {
    * <p>Multiple outputs can be attached to the same stream.
    *
    * @param streamName The output stream name in the graph.
-   * @result a new SurfaceOutput.
+   * @return a new SurfaceOutput.
    */
   public synchronized SurfaceOutput addSurfaceOutput(String streamName) {
     Preconditions.checkState(
@@ -443,7 +490,7 @@ public class Graph {
         nativeGraphHandle = 0;
       }
     }
-    packetCallbacks.clear();
+    callbacks.clear();
   }
 
   /**
@@ -579,6 +626,12 @@ public class Graph {
 
   private native void nativeAddPacketCallback(
       long context, String streamName, PacketCallback callback);
+
+  private native void nativeAddMultiStreamCallback(
+      long context,
+      List<String> streamName,
+      PacketListCallback callback,
+      boolean observeTimestampBounds);
 
   private native long nativeAddSurfaceOutput(long context, String streamName);
 

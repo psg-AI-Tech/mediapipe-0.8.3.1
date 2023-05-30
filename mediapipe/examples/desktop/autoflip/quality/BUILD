@@ -1,4 +1,4 @@
-load("//mediapipe/framework/port:build_config.bzl", "mediapipe_cc_proto_library")
+load("//mediapipe/framework/port:build_config.bzl", "mediapipe_proto_library")
 
 # Copyright 2019 The MediaPipe Authors.
 #
@@ -16,9 +16,11 @@ load("//mediapipe/framework/port:build_config.bzl", "mediapipe_cc_proto_library"
 
 licenses(["notice"])
 
-package(default_visibility = ["//mediapipe/examples:__subpackages__"])
+package(default_visibility = [
+    "//mediapipe/examples:__subpackages__",
+])
 
-proto_library(
+mediapipe_proto_library(
     name = "cropping_proto",
     srcs = ["cropping.proto"],
     deps = [
@@ -27,39 +29,18 @@ proto_library(
     ],
 )
 
-mediapipe_cc_proto_library(
-    name = "cropping_cc_proto",
-    srcs = ["cropping.proto"],
-    cc_deps = [
-        ":kinematic_path_solver_cc_proto",
-        "//mediapipe/examples/desktop/autoflip:autoflip_messages_cc_proto",
-    ],
-    visibility = ["//mediapipe/examples:__subpackages__"],
-    deps = [":cropping_proto"],
-)
-
-proto_library(
+mediapipe_proto_library(
     name = "kinematic_path_solver_proto",
     srcs = ["kinematic_path_solver.proto"],
+    visibility = [
+        "//mediapipe/examples:__subpackages__",
+    ],
 )
 
-mediapipe_cc_proto_library(
-    name = "kinematic_path_solver_cc_proto",
-    srcs = ["kinematic_path_solver.proto"],
-    visibility = ["//mediapipe/examples:__subpackages__"],
-    deps = [":kinematic_path_solver_proto"],
-)
-
-proto_library(
+mediapipe_proto_library(
     name = "focus_point_proto",
     srcs = ["focus_point.proto"],
-)
-
-mediapipe_cc_proto_library(
-    name = "focus_point_cc_proto",
-    srcs = ["focus_point.proto"],
     visibility = ["//mediapipe/examples:__subpackages__"],
-    deps = [":focus_point_proto"],
 )
 
 cc_library(
@@ -96,11 +77,11 @@ cc_library(
     deps = [
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/formats:image_frame_opencv",
-        "//mediapipe/framework/port:commandlineflags",
         "//mediapipe/framework/port:opencv_core",
         "//mediapipe/framework/port:opencv_imgproc",
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:status",
+        "@com_google_absl//absl/flags:flag",
     ],
 )
 
@@ -249,10 +230,10 @@ cc_test(
         ":scene_camera_motion_analyzer",
         "//mediapipe/examples/desktop/autoflip:autoflip_messages_cc_proto",
         "//mediapipe/framework/deps:file_path",
-        "//mediapipe/framework/port:commandlineflags",
         "//mediapipe/framework/port:file_helpers",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:status",
+        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -280,13 +261,13 @@ cc_test(
         "//mediapipe/framework/deps:file_path",
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/formats:image_frame_opencv",
-        "//mediapipe/framework/port:commandlineflags",
         "//mediapipe/framework/port:file_helpers",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:opencv_imgcodecs",
         "//mediapipe/framework/port:opencv_imgproc",
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:status",
+        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -329,16 +310,10 @@ cc_test(
     ],
 )
 
-proto_library(
+mediapipe_proto_library(
     name = "visual_scorer_proto",
     srcs = ["visual_scorer.proto"],
-)
-
-mediapipe_cc_proto_library(
-    name = "visual_scorer_cc_proto",
-    srcs = ["visual_scorer.proto"],
     visibility = ["//mediapipe/examples:__subpackages__"],
-    deps = [":visual_scorer_proto"],
 )
 
 cc_library(

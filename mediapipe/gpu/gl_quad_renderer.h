@@ -15,7 +15,9 @@
 #ifndef MEDIAPIPE_GPU_GL_QUAD_RENDERER_H_
 #define MEDIAPIPE_GPU_GL_QUAD_RENDERER_H_
 
-#include "mediapipe/framework/port/status.h"
+#include <optional>
+
+#include "absl/status/status.h"
 #include "mediapipe/gpu/gl_base.h"
 #include "mediapipe/gpu/scale_mode.pb.h"
 
@@ -72,17 +74,20 @@ class QuadRenderer {
   absl::Status GlRender(float frame_width, float frame_height, float view_width,
                         float view_height, FrameScaleMode scale_mode,
                         FrameRotation rotation, bool flip_horizontal,
-                        bool flip_vertical, bool flip_texture);
+                        bool flip_vertical, bool flip_texture) const;
   // Deletes the rendering program. Must be called withn the GL context where
   // it was created.
   void GlTeardown();
 
  private:
+  void UpdateVertices(FrameRotation rotation) const;
+
   GLuint program_ = 0;
   GLint scale_unif_ = -1;
   std::vector<GLint> frame_unifs_;
-  GLuint vao_;              // vertex array object
+  GLuint vao_ = 0;          // vertex array object
   GLuint vbo_[2] = {0, 0};  // for vertex buffer storage
+  mutable std::optional<FrameRotation> rotation_;
 };
 
 absl::Status FrameRotationFromInt(FrameRotation* rotation, int degrees_ccw);

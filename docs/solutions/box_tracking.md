@@ -1,8 +1,9 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/solutions/guide#legacy
 title: Box Tracking
-parent: Solutions
-nav_order: 9
+parent: MediaPipe Legacy Solutions
+nav_order: 10
 ---
 
 # MediaPipe Box Tracking
@@ -17,6 +18,14 @@ nav_order: 9
 {:toc}
 </details>
 ---
+
+**Attention:** *Thank you for your interest in MediaPipe Solutions.
+We have ended support for this MediaPipe Legacy Solution as of March 1, 2023.
+For more information, see the
+[MediaPipe Solutions](https://developers.google.com/mediapipe/solutions/guide#legacy)
+site.*
+
+----
 
 ## Overview
 
@@ -80,7 +89,7 @@ frame (e.g., [MediaPipe Object Detection](./object_detection.md)):
 *   Object localization is temporally consistent with the help of tracking,
     meaning less jitter is observable across frames.
 
-![object_tracking_android_gpu.gif](../images/mobile/object_tracking_android_gpu.gif) |
+![object_tracking_android_gpu.gif](https://mediapipe.dev/images/mobile/object_tracking_android_gpu.gif) |
 :----------------------------------------------------------------------------------: |
 *Fig 1. Box tracking paired with ML-based object detection.*                         |
 

@@ -1,7 +1,8 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/solutions/vision/face_landmarker/
 title: Iris
-parent: Solutions
+parent: MediaPipe Legacy Solutions
 nav_order: 3
 ---
 
@@ -17,6 +18,14 @@ nav_order: 3
 {:toc}
 </details>
 ---
+
+**Attention:** *Thank you for your interest in MediaPipe Solutions.
+As of March 1, 2023, this solution is planned to be upgraded to a new MediaPipe
+Solution. For more information, see the
+[MediaPipe Solutions](https://developers.google.com/mediapipe/solutions/guide#legacy)
+site.*
+
+----
 
 ## Overview
 
@@ -38,12 +47,12 @@ camera, in real-time, without the need for specialized hardware. Through use of
 iris landmarks, the solution is also able to determine the metric distance
 between the subject and the camera with relative error less than 10%. Note that
 iris tracking does not infer the location at which people are looking, nor does
-it provide any form of identity recognition. With the cross-platfrom capability
+it provide any form of identity recognition. With the cross-platform capability
 of the MediaPipe framework, MediaPipe Iris can run on most modern
 [mobile phones](#mobile), [desktops/laptops](#desktop) and even on the
 [web](#web).
 
-![iris_tracking_example.gif](../images/mobile/iris_tracking_example.gif)   |
+![iris_tracking_example.gif](https://mediapipe.dev/images/mobile/iris_tracking_example.gif)   |
 :------------------------------------------------------------------------: |
 *Fig 1. Example of MediaPipe Iris: eyelid (red) and iris (blue) contours.* |
 
@@ -69,7 +78,7 @@ and renders using a dedicated
 The
 [face landmark subgraph](https://github.com/google/mediapipe/tree/master/mediapipe/modules/face_landmark/face_landmark_front_gpu.pbtxt)
 internally uses a
-[face detection subgraph](https://github.com/google/mediapipe/tree/master/mediapipe/modules/face_detection/face_detection_front_gpu.pbtxt)
+[face detection subgraph](https://github.com/google/mediapipe/tree/master/mediapipe/modules/face_detection/face_detection_short_range_gpu.pbtxt)
 from the
 [face detection module](https://github.com/google/mediapipe/tree/master/mediapipe/modules/face_detection).
 
@@ -99,10 +108,10 @@ You can also find more details in this
 ### Iris Landmark Model
 
 The iris model takes an image patch of the eye region and estimates both the eye
-landmarks (along the eyelid) and iris landmarks (along ths iris contour). You
+landmarks (along the eyelid) and iris landmarks (along this iris contour). You
 can find more details in this [paper](https://arxiv.org/abs/2006.11341).
 
-![iris_tracking_eye_and_iris_landmarks.png](../images/mobile/iris_tracking_eye_and_iris_landmarks.png) |
+![iris_tracking_eye_and_iris_landmarks.png](https://mediapipe.dev/images/mobile/iris_tracking_eye_and_iris_landmarks.png) |
 :----------------------------------------------------------------------------------------------------: |
 *Fig 2. Eye landmarks (red) and iris landmarks (green).*                                               |
 
@@ -115,7 +124,7 @@ human eye remains roughly constant at 11.7±0.5 mm across a wide population,
 along with some simple geometric arguments. For more details please refer to our
 [Google AI Blog post](https://ai.googleblog.com/2020/08/mediapipe-iris-real-time-iris-tracking.html).
 
-![iris_tracking_depth_from_iris.gif](../images/mobile/iris_tracking_depth_from_iris.gif) |
+![iris_tracking_depth_from_iris.gif](https://mediapipe.dev/images/mobile/iris_tracking_depth_from_iris.gif) |
 :--------------------------------------------------------------------------------------------: |
 *Fig 3. (Left) MediaPipe Iris predicting metric distance in cm on a Pixel 2 from iris tracking without use of a depth sensor. (Right) Ground-truth depth.* |
 
@@ -193,7 +202,17 @@ on how to build MediaPipe examples.
 
 ### Web
 
-Please refer to [these instructions](../index.md#mediapipe-on-the-web).
+You can use the following links to load a demo in the MediaPipe Visualizer, and
+over there click the "Runner" icon in the top bar like shown below. The demos
+use your webcam video as input, which is processed all locally in real-time and
+never leaves your device. Please see
+[MediaPipe on the Web](https://developers.googleblog.com/2020/01/mediapipe-on-web.html)
+in Google Developers Blog for details.
+
+![visualizer_runner](https://mediapipe.dev/images/visualizer_runner.png)
+
+*   [MediaPipe Iris](https://viz.mediapipe.dev/demo/iris_tracking)
+*   [MediaPipe Iris: Depth-from-Iris](https://viz.mediapipe.dev/demo/iris_depth)
 
 ## Resources
 

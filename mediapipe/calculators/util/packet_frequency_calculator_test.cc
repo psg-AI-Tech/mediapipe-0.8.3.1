@@ -24,7 +24,7 @@ namespace mediapipe {
 namespace {
 
 CalculatorGraphConfig::Node GetDefaultNode() {
-  return ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"(
+  return ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"pb(
     calculator: "PacketFrequencyCalculator"
     input_stream: "packet_stream"
     output_stream: "packet_frequency"
@@ -34,11 +34,11 @@ CalculatorGraphConfig::Node GetDefaultNode() {
         label: "stream_description"
       }
     }
-  )");
+  )pb");
 }
 
 CalculatorGraphConfig::Node GetNodeWithMultipleStreams() {
-  return ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"(
+  return ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"pb(
     calculator: "PacketFrequencyCalculator"
     input_stream: "packet_stream_0"
     input_stream: "packet_stream_1"
@@ -55,7 +55,7 @@ CalculatorGraphConfig::Node GetNodeWithMultipleStreams() {
         label: "stream_description_2"
       }
     }
-  )");
+  )pb");
 }
 
 // Tests packet frequency.
@@ -129,8 +129,8 @@ TEST(PacketFrequencyCalculatorTest, MultiPacketTest) {
 // Tests packet frequency with multiple input/output streams.
 TEST(PacketFrequencyCalculatorTest, MultiStreamTest) {
   // Setup the calculator runner and provide strings as input on all streams
-  // (note that it doesn't have to be std::string; the calculator can take any
-  // type as input).
+  // (note that it doesn't have to be string; the calculator can take any type
+  // as input).
   CalculatorRunner runner(GetNodeWithMultipleStreams());
 
   // Packet 1 on stream 1.

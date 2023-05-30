@@ -26,6 +26,8 @@ namespace mediapipe {
 namespace tf = ::tensorflow;
 namespace {
 
+constexpr char kReferenceTag[] = "REFERENCE";
+
 constexpr char kMatrix[] = "MATRIX";
 constexpr char kTensor[] = "TENSOR";
 
@@ -68,7 +70,8 @@ class TensorToMatrixCalculatorTest : public ::testing::Test {
     if (include_rate) {
       header->set_packet_rate(1.0);
     }
-    runner_->MutableInputs()->Tag("REFERENCE").header = Adopt(header.release());
+    runner_->MutableInputs()->Tag(kReferenceTag).header =
+        Adopt(header.release());
   }
 
   std::unique_ptr<CalculatorRunner> runner_;
@@ -85,7 +88,7 @@ TEST_F(TensorToMatrixCalculatorTest, Converts1DTensorToMatrix) {
     tensor_vec(i) = static_cast<float>(1 << i);
   }
 
-  const int64 time = 1234;
+  const int64_t time = 1234;
   runner_->MutableInputs()->Tag(kTensor).packets.push_back(
       Adopt(tensor.release()).At(Timestamp(time)));
 
@@ -111,7 +114,7 @@ TEST_F(TensorToMatrixCalculatorTest, Converts2DTensorofWidthOneToMatrix) {
   for (int i = 0; i < 4; ++i) {
     slice(i) = static_cast<float>(1 << i);
   }
-  const int64 time = 1234;
+  const int64_t time = 1234;
   runner_->MutableInputs()->Tag(kTensor).packets.push_back(
       Adopt(tensor.release()).At(Timestamp(time)));
 
@@ -140,7 +143,7 @@ TEST_F(TensorToMatrixCalculatorTest, Converts2DTensorToMatrix) {
       slice(i * 4 + j) = static_cast<float>(i * j);
     }
   }
-  const int64 time = 1234;
+  const int64_t time = 1234;
   runner_->MutableInputs()->Tag(kTensor).packets.push_back(
       Adopt(tensor.release()).At(Timestamp(time)));
 
@@ -171,7 +174,7 @@ TEST_F(TensorToMatrixCalculatorTest, ConvertsWithReferenceTimeSeriesHeader) {
     tensor_vec(i) = static_cast<float>(1 << i);
   }
 
-  const int64 time = 1234;
+  const int64_t time = 1234;
   runner_->MutableInputs()->Tag(kTensor).packets.push_back(
       Adopt(tensor.release()).At(Timestamp(time)));
 
@@ -203,7 +206,7 @@ TEST_F(TensorToMatrixCalculatorTest, TimeSeriesOverridesWork) {
     tensor_vec(i) = static_cast<float>(1 << i);
   }
 
-  const int64 time = 1234;
+  const int64_t time = 1234;
   runner_->MutableInputs()->Tag(kTensor).packets.push_back(
       Adopt(tensor.release()).At(Timestamp(time)));
 

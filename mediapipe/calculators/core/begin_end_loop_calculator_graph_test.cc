@@ -20,6 +20,7 @@
 #include "mediapipe/calculators/core/end_loop_calculator.h"
 #include "mediapipe/framework/calculator_contract.h"
 #include "mediapipe/framework/calculator_framework.h"
+#include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/packet.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -70,7 +71,7 @@ class BeginEndLoopCalculatorGraphTest : public ::testing::Test {
  protected:
   void SetUp() override {
     auto graph_config = ParseTextProtoOrDie<CalculatorGraphConfig>(
-        R"(
+        R"pb(
           num_threads: 4
           input_stream: "ints"
           node {
@@ -90,7 +91,7 @@ class BeginEndLoopCalculatorGraphTest : public ::testing::Test {
             input_stream: "BATCH_END:timestamp"
             output_stream: "ITERABLE:ints_plus_one"
           }
-        )");
+        )pb");
     tool::AddVectorSink("ints_plus_one", &graph_config, &output_packets_);
     MP_ASSERT_OK(graph_.Initialize(graph_config));
     MP_ASSERT_OK(graph_.StartRun({}));
@@ -197,7 +198,7 @@ class BeginEndLoopCalculatorGraphProcessingEmptyPacketsTest
  protected:
   void SetUp() override {
     auto graph_config = ParseTextProtoOrDie<CalculatorGraphConfig>(
-        R"(
+        R"pb(
           num_threads: 4
           input_stream: "ints"
           input_stream: "force_ints_to_be_timestamp_bound_update"
@@ -229,7 +230,7 @@ class BeginEndLoopCalculatorGraphProcessingEmptyPacketsTest
             input_stream: "ints_plus_one"
             output_stream: "ints_plus_one_passed_through"
           }
-        )");
+        )pb");
     tool::AddVectorSink("ints_plus_one_passed_through", &graph_config,
                         &output_packets_);
     MP_ASSERT_OK(graph_.Initialize(graph_config));
@@ -338,7 +339,7 @@ class BeginEndLoopCalculatorGraphWithClonedInputsTest : public ::testing::Test {
  protected:
   void SetUp() override {
     auto graph_config = ParseTextProtoOrDie<CalculatorGraphConfig>(
-        R"(
+        R"pb(
           num_threads: 4
           input_stream: "ints"
           input_stream: "multiplier"
@@ -362,7 +363,7 @@ class BeginEndLoopCalculatorGraphWithClonedInputsTest : public ::testing::Test {
             input_stream: "BATCH_END:timestamp"
             output_stream: "ITERABLE:multiplied_ints"
           }
-        )");
+        )pb");
     tool::AddVectorSink("multiplied_ints", &graph_config, &output_packets_);
     MP_ASSERT_OK(graph_.Initialize(graph_config));
     MP_ASSERT_OK(graph_.StartRun({}));
@@ -442,6 +443,68 @@ TEST_F(BeginEndLoopCalculatorGraphWithClonedInputsTest, MultipleVectors) {
               testing::ElementsAre(
                   PacketOfIntsEq(input_timestamp0, std::vector<int>{0, 2}),
                   PacketOfIntsEq(input_timestamp2, std::vector<int>{6, 9})));
+}
+
+absl::Status InitBeginEndTensorLoopTestGraph(
+    CalculatorGraph& graph, std::vector<Packet>& output_packets) {
+  auto graph_config = ParseTextProtoOrDie<CalculatorGraphConfig>(
+      R"pb(
+        num_threads: 4
+        input_stream: "tensors"
+        node {
+          calculator: "BeginLoopTensorCalculator"
+          input_stream: "ITERABLE:tensors"
+          output_stream: "ITEM:tensor"
+          output_stream: "BATCH_END:timestamp"
+        }
+        node {
+          calculator: "PassThroughCalculator"
+          input_stream: "tensor"
+          output_stream: "passed_tensor"
+        }
+        node {
+          calculator: "EndLoopTensorCalculator"
+          input_stream: "ITEM:passed_tensor"
+          input_stream: "BATCH_END:timestamp"
+          output_stream: "ITERABLE:output_tensors"
+        }
+      )pb");
+  tool::AddVectorSink("output_tensors", &graph_config, &output_packets);
+  MP_RETURN_IF_ERROR(graph.Initialize(graph_config));
+  return graph.StartRun({});
+}
+
+TEST(BeginEndTensorLoopCalculatorGraphTest, SingleNonEmptyVector) {
+  // Initialize the graph.
+  CalculatorGraph graph;
+  std::vector<Packet> output_packets;
+  MP_ASSERT_OK(InitBeginEndTensorLoopTestGraph(graph, output_packets));
+
+  // Prepare the inputs and run.
+  Timestamp input_timestamp = Timestamp(0);
+  std::vector<mediapipe::Tensor> tensors;
+  for (int i = 0; i < 4; i++) {
+    tensors.emplace_back(Tensor::ElementType::kFloat32,
+                         Tensor::Shape{4, 3, 2, 1});
+  }
+  Packet vector_packet =
+      MakePacket<std::vector<mediapipe::Tensor>>(std::move(tensors));
+  MP_ASSERT_OK(graph.AddPacketToInputStream(
+      "tensors", std::move(vector_packet).At(input_timestamp)));
+  MP_ASSERT_OK(graph.WaitUntilIdle());
+
+  // Verify the output packet.
+  EXPECT_EQ(output_packets.size(), 1);
+  const std::vector<Tensor>& output_tensors =
+      output_packets[0].Get<std::vector<Tensor>>();
+  EXPECT_EQ(output_tensors.size(), 4);
+  for (int i = 0; i < output_tensors.size(); i++) {
+    EXPECT_THAT(output_tensors[i].shape().dims,
+                testing::ElementsAre(4, 3, 2, 1));
+  }
+
+  MP_ASSERT_OK(graph.CloseAllPacketSources());
+  MP_ASSERT_OK(graph.WaitUntilDone());
 }
 
 }  // namespace

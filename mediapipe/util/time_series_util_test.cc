@@ -16,7 +16,6 @@
 
 #include "Eigen/Core"
 #include "mediapipe/framework/calculator_framework.h"
-#include "mediapipe/framework/deps/message_matchers.h"
 #include "mediapipe/framework/formats/time_series_header.pb.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -187,7 +186,7 @@ TEST(TimeSeriesUtilTest, SecondsToSamples) {
 
 TEST(TimeSeriesUtilTest, SamplesToSeconds) {
   double sample_rate = 32.5;
-  int64 num_samples = 128;
+  int64_t num_samples = 128;
   EXPECT_EQ(num_samples / sample_rate,
             SamplesToSeconds(num_samples, sample_rate));
 }

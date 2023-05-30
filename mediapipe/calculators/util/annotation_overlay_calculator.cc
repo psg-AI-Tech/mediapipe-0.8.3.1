@@ -272,6 +272,15 @@ absl::Status AnnotationOverlayCalculator::Open(CalculatorContext* cc) {
 }
 
 absl::Status AnnotationOverlayCalculator::Process(CalculatorContext* cc) {
+  if (cc->Inputs().HasTag(kGpuBufferTag) &&
+      cc->Inputs().Tag(kGpuBufferTag).IsEmpty()) {
+    return absl::OkStatus();
+  }
+  if (cc->Inputs().HasTag(kImageFrameTag) &&
+      cc->Inputs().Tag(kImageFrameTag).IsEmpty()) {
+    return absl::OkStatus();
+  }
+
   // Initialize render target, drawn with OpenCV.
   std::unique_ptr<cv::Mat> image_mat;
   ImageFormat::Format target_format;
@@ -402,7 +411,7 @@ absl::Status AnnotationOverlayCalculator::RenderToGpu(CalculatorContext* cc,
 
   // Blend overlay image in GPU shader.
   {
-    gpu_helper_.BindFramebuffer(output_texture);  // GL_TEXTURE0
+    gpu_helper_.BindFramebuffer(output_texture);
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, input_texture.name());
@@ -462,7 +471,7 @@ absl::Status AnnotationOverlayCalculator::CreateRenderTargetCpu(
     auto input_mat = formats::MatView(&input_frame);
     if (input_frame.Format() == ImageFormat::GRAY8) {
       cv::Mat rgb_mat;
-      cv::cvtColor(input_mat, rgb_mat, CV_GRAY2RGB);
+      cv::cvtColor(input_mat, rgb_mat, cv::COLOR_GRAY2RGB);
       rgb_mat.copyTo(*image_mat);
     } else {
       input_mat.copyTo(*image_mat);
@@ -649,7 +658,7 @@ absl::Status AnnotationOverlayCalculator::GlSetup(CalculatorContext* cc) {
     glBindTexture(GL_TEXTURE_2D, image_mat_tex_);
     // TODO
     // OpenCV only renders to RGB images, not RGBA. Ideally this should be RGBA.
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width_canvas_, height_canvas_, 0,
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width_canvas_, height_canvas_, 0,
                  GL_RGB, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);

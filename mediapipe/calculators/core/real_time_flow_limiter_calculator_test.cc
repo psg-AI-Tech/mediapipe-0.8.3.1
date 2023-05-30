@@ -33,6 +33,9 @@
 namespace mediapipe {
 
 namespace {
+
+constexpr char kFinishedTag[] = "FINISHED";
+
 // A simple Semaphore for synchronizing test threads.
 class AtomicSemaphore {
  public:
@@ -49,8 +52,8 @@ class AtomicSemaphore {
 };
 
 // Returns the timestamp values for a vector of Packets.
-std::vector<int64> TimestampValues(const std::vector<Packet>& packets) {
-  std::vector<int64> result;
+std::vector<int64_t> TimestampValues(const std::vector<Packet>& packets) {
+  std::vector<int64_t> result;
   for (const Packet& packet : packets) {
     result.push_back(packet.Timestamp().Value());
   }
@@ -70,13 +73,13 @@ std::vector<T> PacketValues(const std::vector<Packet>& packets) {
 constexpr int kNumImageFrames = 5;
 constexpr int kNumFinished = 3;
 CalculatorGraphConfig::Node GetDefaultNode() {
-  return ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"(
+  return ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"pb(
     calculator: "RealTimeFlowLimiterCalculator"
     input_stream: "raw_frames"
     input_stream: "FINISHED:finished"
     input_stream_info: { tag_index: "FINISHED" back_edge: true }
     output_stream: "gated_frames"
-  )");
+  )pb");
 }
 
 // Simple test to make sure that the RealTimeFlowLimiterCalculator outputs just
@@ -112,7 +115,7 @@ TEST(RealTimeFlowLimiterCalculator, BasicTest) {
     Timestamp timestamp =
         Timestamp((i + 1) * Timestamp::kTimestampUnitsPerSecond);
     runner.MutableInputs()
-        ->Tag("FINISHED")
+        ->Tag(kFinishedTag)
         .packets.push_back(MakePacket<bool>(true).At(timestamp));
   }
 
@@ -219,7 +222,7 @@ class RealTimeFlowLimiterCalculatorTest : public testing::Test {
   // Back-edge "finished" limits processing to one frame in-flight.
   // The two LambdaCalculators are used to keep certain packet sets in flight.
   CalculatorGraphConfig InflightGraphConfig() {
-    return ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+    return ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
       input_stream: 'in_1'
       input_stream: 'in_2'
       node {
@@ -256,7 +259,7 @@ class RealTimeFlowLimiterCalculatorTest : public testing::Test {
         output_stream: 'out_1'
         output_stream: 'out_2'
       }
-    )");
+    )pb");
   }
 
  protected:
@@ -280,9 +283,9 @@ TEST_F(RealTimeFlowLimiterCalculatorTest, BackEdgeCloses) {
   InitializeGraph(1);
   MP_ASSERT_OK(graph_.StartRun({}));
 
-  auto send_packet = [this](const std::string& input_name, int64 n) {
+  auto send_packet = [this](const std::string& input_name, int64_t n) {
     MP_EXPECT_OK(graph_.AddPacketToInputStream(
-        input_name, MakePacket<int64>(n).At(Timestamp(n))));
+        input_name, MakePacket<int64_t>(n).At(Timestamp(n))));
   };
 
   for (int i = 0; i < 10; i++) {
@@ -304,14 +307,14 @@ TEST_F(RealTimeFlowLimiterCalculatorTest, BackEdgeCloses) {
   EXPECT_EQ(10, out_2_packets_.size());
 
   // Timestamps have not been messed with.
-  EXPECT_EQ(PacketValues<int64>(out_1_packets_),
+  EXPECT_EQ(PacketValues<int64_t>(out_1_packets_),
             TimestampValues(out_1_packets_));
-  EXPECT_EQ(PacketValues<int64>(out_2_packets_),
+  EXPECT_EQ(PacketValues<int64_t>(out_2_packets_),
             TimestampValues(out_2_packets_));
 
   // Extra inputs on in_1 have been dropped
   EXPECT_EQ(TimestampValues(out_1_packets_),
-            (std::vector<int64>{0, 10, 20, 30, 40, 50, 60, 70, 80, 90}));
+            (std::vector<int64_t>{0, 10, 20, 30, 40, 50, 60, 70, 80, 90}));
   EXPECT_EQ(TimestampValues(out_1_packets_), TimestampValues(out_2_packets_));
 
   // The closing of the stream has been propagated.
@@ -336,7 +339,7 @@ TEST_F(RealTimeFlowLimiterCalculatorTest, AllStreamsClose) {
 
   EXPECT_EQ(TimestampValues(out_1_packets_), TimestampValues(out_2_packets_));
   EXPECT_EQ(TimestampValues(out_1_packets_),
-            (std::vector<int64>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
+            (std::vector<int64_t>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
   EXPECT_EQ(1, close_count_);
 }
 
@@ -344,7 +347,7 @@ TEST(RealTimeFlowLimiterCalculator, TwoStreams) {
   std::vector<Packet> a_passed;
   std::vector<Packet> b_passed;
   CalculatorGraphConfig graph_config_ =
-      ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: 'in_a'
         input_stream: 'in_b'
         input_stream: 'finished'
@@ -360,7 +363,7 @@ TEST(RealTimeFlowLimiterCalculator, TwoStreams) {
           output_stream: 'in_b_sampled'
           output_stream: 'ALLOW:allow'
         }
-      )");
+      )pb");
   std::string allow_cb_name;
   tool::AddVectorSink("in_a_sampled", &graph_config_, &a_passed);
   tool::AddVectorSink("in_b_sampled", &graph_config_, &b_passed);
@@ -389,50 +392,50 @@ TEST(RealTimeFlowLimiterCalculator, TwoStreams) {
   send_packet("in_a", 1);
   MP_EXPECT_OK(graph_.WaitUntilIdle());
   EXPECT_EQ(allow, false);
-  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64>{1}));
-  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64>{}));
+  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64_t>{1}));
+  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64_t>{}));
 
   send_packet("in_a", 2);
   send_packet("in_b", 1);
   MP_EXPECT_OK(graph_.WaitUntilIdle());
-  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64>{1}));
-  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64>{1}));
+  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64_t>{1}));
+  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64_t>{1}));
   EXPECT_EQ(allow, false);
 
   send_packet("finished", 1);
   MP_EXPECT_OK(graph_.WaitUntilIdle());
-  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64>{1}));
-  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64>{1}));
+  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64_t>{1}));
+  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64_t>{1}));
   EXPECT_EQ(allow, true);
 
   send_packet("in_b", 2);
   MP_EXPECT_OK(graph_.WaitUntilIdle());
-  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64>{1}));
-  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64>{1}));
+  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64_t>{1}));
+  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64_t>{1}));
   EXPECT_EQ(allow, true);
 
   send_packet("in_b", 3);
   MP_EXPECT_OK(graph_.WaitUntilIdle());
-  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64>{1}));
-  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64>{1, 3}));
+  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64_t>{1}));
+  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64_t>{1, 3}));
   EXPECT_EQ(allow, false);
 
   send_packet("in_b", 4);
   MP_EXPECT_OK(graph_.WaitUntilIdle());
-  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64>{1}));
-  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64>{1, 3}));
+  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64_t>{1}));
+  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64_t>{1, 3}));
   EXPECT_EQ(allow, false);
 
   send_packet("in_a", 3);
   MP_EXPECT_OK(graph_.WaitUntilIdle());
-  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64>{1, 3}));
-  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64>{1, 3}));
+  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64_t>{1, 3}));
+  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64_t>{1, 3}));
   EXPECT_EQ(allow, false);
 
   send_packet("finished", 3);
   MP_EXPECT_OK(graph_.WaitUntilIdle());
-  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64>{1, 3}));
-  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64>{1, 3}));
+  EXPECT_EQ(TimestampValues(a_passed), (std::vector<int64_t>{1, 3}));
+  EXPECT_EQ(TimestampValues(b_passed), (std::vector<int64_t>{1, 3}));
   EXPECT_EQ(allow, true);
 
   MP_EXPECT_OK(graph_.CloseAllInputStreams());
@@ -442,7 +445,7 @@ TEST(RealTimeFlowLimiterCalculator, TwoStreams) {
 TEST(RealTimeFlowLimiterCalculator, CanConsume) {
   std::vector<Packet> in_sampled_packets_;
   CalculatorGraphConfig graph_config_ =
-      ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: 'in'
         input_stream: 'finished'
         node {
@@ -455,7 +458,7 @@ TEST(RealTimeFlowLimiterCalculator, CanConsume) {
           output_stream: 'in_sampled'
           output_stream: 'ALLOW:allow'
         }
-      )");
+      )pb");
   std::string allow_cb_name;
   tool::AddVectorSink("in_sampled", &graph_config_, &in_sampled_packets_);
   tool::AddCallbackCalculator("allow", &graph_config_, &allow_cb_name, true);
@@ -483,7 +486,7 @@ TEST(RealTimeFlowLimiterCalculator, CanConsume) {
   send_packet("in", 1);
   MP_EXPECT_OK(graph_.WaitUntilIdle());
   EXPECT_EQ(allow, false);
-  EXPECT_EQ(TimestampValues(in_sampled_packets_), (std::vector<int64>{1}));
+  EXPECT_EQ(TimestampValues(in_sampled_packets_), (std::vector<int64_t>{1}));
 
   MP_EXPECT_OK(in_sampled_packets_[0].Consume<int>());
 

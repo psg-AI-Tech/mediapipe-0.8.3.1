@@ -1,5 +1,6 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/framework/getting_started/ios
 title: MediaPipe on iOS
 parent: Getting Started
 has_children: true
@@ -13,6 +14,12 @@ nav_order: 2
 1. TOC
 {:toc}
 ---
+
+**Attention:** *Thanks for your interest in MediaPipe! We have moved to
+[https://developers.google.com/mediapipe](https://developers.google.com/mediapipe)
+as the primary developer documentation site for MediaPipe as of April 3, 2023.*
+
+----
 
 Please follow instructions below to build iOS example apps in the supported
 MediaPipe [solutions](../solutions/solutions.md). To learn more about these
@@ -32,9 +39,14 @@ example apps, start from, start from
     xcode-select --install
     ```
 
-3.  Install [Bazel](https://bazel.build/).
+3.  Install [Bazelisk](https://github.com/bazelbuild/bazelisk)
+.
 
-    We recommend using [Homebrew](https://brew.sh/) to get the latest version.
+    We recommend using [Homebrew](https://brew.sh/) to get the latest versions.
+
+    ```bash
+    brew install bazelisk
+    ```
 
 4.  Set Python 3.7 as the default Python version and install the Python "six"
     library. This is needed for TensorFlow.
@@ -86,6 +98,10 @@ allows you to make use of automatic provisioning (see later section).
     This will install `Tulsi.app` inside the `Applications` directory in your
     home directory.
 
+    **Note**: Please ensure the `xcode_version` in the
+    [`build_and_run.sh`](https://github.com/bazelbuild/tulsi/blob/b1d0108e6a93dbe8ab01529b2c607b6b651f0759/build_and_run.sh#L26)
+    file in tulsi repo is the same version as installed in your system.
+
 2.  Open `mediapipe/Mediapipe.tulsiproj` using the Tulsi app.
 
     Tip: If Tulsi displays an error saying "Bazel could not be found", press the
@@ -104,8 +120,8 @@ allows you to make use of automatic provisioning (see later section).
 To install applications on an iOS device, you need a provisioning profile. There
 are two options:
 
-1.  Automatic provisioning. This allows you to build and install an app to your
-    personal device. The provisining profile is managed by Xcode, and has to be
+1.  Automatic provisioning. This allows you to build and install an app on your
+    personal device. The provisioning profile is managed by Xcode, and has to be
     updated often (it is valid for about a week).
 
 2.  Custom provisioning. This uses a provisioning profile associated with an
@@ -170,7 +186,7 @@ Profiles"`. If there are none, generate and download a profile on
 Note: if you had previously set up automatic provisioning, you should remove the
 `provisioning_profile.mobileprovision` symlink in each example's directory,
 since it will take precedence over the common one. You can also overwrite it
-with you own profile if you need a different profile for different apps.
+with your own profile if you need a different profile for different apps.
 
 1.  Open `mediapipe/examples/ios/bundle_id.bzl`, and change the
     `BUNDLE_ID_PREFIX` to a prefix associated with your provisioning profile.
@@ -186,6 +202,9 @@ with you own profile if you need a different profile for different apps.
 Note: When you ask Xcode to run an app, by default it will use the Debug
 configuration. Some of our demos are computationally heavy; you may want to use
 the Release configuration for better performance.
+
+Note: Due to an incompatibility caused by one of our dependencies, MediaPipe
+cannot be used for apps running on the iPhone Simulator on Apple Silicon (M1).
 
 Tip: To switch build configuration in Xcode, click on the target menu, choose
 "Edit Scheme...", select the Run action, and switch the Build Configuration from

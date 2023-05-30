@@ -16,6 +16,10 @@ load(
     "//mediapipe/framework/tool:mediapipe_graph.bzl",
     "mediapipe_simple_subgraph",
 )
+load(
+    "//mediapipe/framework/tool:mediapipe_files.bzl",
+    "mediapipe_files",
+)
 
 licenses(["notice"])
 
@@ -24,8 +28,7 @@ package(default_visibility = ["//visibility:public"])
 mediapipe_simple_subgraph(
     name = "pose_detection_cpu",
     graph = "pose_detection_cpu.pbtxt",
-    # register_as = "PoseDetectionCpu",
-    register_as = "PoseDetectionCpu_cputest",
+    register_as = "PoseDetectionCpu",
     deps = [
         "//mediapipe/calculators/tensor:image_to_tensor_calculator",
         "//mediapipe/calculators/tensor:inference_calculator",
@@ -50,7 +53,7 @@ mediapipe_simple_subgraph(
     ],
 )
 
-exports_files(
+mediapipe_files(
     srcs = [
         "pose_detection.tflite",
     ],

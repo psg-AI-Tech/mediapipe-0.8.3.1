@@ -1,5 +1,8 @@
 #include "mediapipe/framework/formats/tensor.h"
 
+#include <cstring>
+#include <string>
+
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #if !MEDIAPIPE_DISABLE_GPU
@@ -23,6 +26,12 @@ TEST(General, TestDataTypes) {
 
   Tensor t2(Tensor::ElementType::kFloat16, Tensor::Shape{4, 3, 2, 3});
   EXPECT_EQ(t2.bytes(), t2.shape().num_elements() * 2);
+
+  Tensor t_char(Tensor::ElementType::kChar, Tensor::Shape{4});
+  EXPECT_EQ(t_char.bytes(), t_char.shape().num_elements() * sizeof(char));
+
+  Tensor t_bool(Tensor::ElementType::kBool, Tensor::Shape{2, 3});
+  EXPECT_EQ(t_bool.bytes(), t_bool.shape().num_elements() * sizeof(bool));
 }
 
 TEST(Cpu, TestMemoryAllocation) {
@@ -33,7 +42,8 @@ TEST(Cpu, TestMemoryAllocation) {
 }
 
 TEST(Cpu, TestTensorMove) {
-  Tensor t1(Tensor::ElementType::kFloat32, Tensor::Shape{4, 3, 2, 3});
+  Tensor t1(Tensor::ElementType::kFloat32, Tensor::Shape{4, 3, 2, 3},
+            Tensor::QuantizationParameters(0.5, 127));
   void* p1 = t1.GetCpuWriteView().buffer<float>();
   EXPECT_NE(p1, nullptr);
   Tensor t2(std::move(t1));
@@ -41,6 +51,10 @@ TEST(Cpu, TestTensorMove) {
   EXPECT_EQ(t1.bytes(), 0);  // NOLINT
   void* p2 = t2.GetCpuWriteView().buffer<float>();
   EXPECT_EQ(p1, p2);
+  EXPECT_EQ(t1.quantization_parameters().scale,
+            t2.quantization_parameters().scale);
+  EXPECT_EQ(t1.quantization_parameters().zero_point,
+            t2.quantization_parameters().zero_point);
 }
 
 TEST(Cpu, TestViewMove) {

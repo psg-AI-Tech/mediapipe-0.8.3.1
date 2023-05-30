@@ -17,15 +17,15 @@
 # Script to build/run all MediaPipe desktop example apps (with webcam input).
 #
 # To build and run all apps and store them in out_dir:
-#   $ ./build_ios_examples.sh -d out_dir
+#   $ ./build_desktop_examples.sh -d out_dir
 #   Omitting -d and the associated directory saves all generated apps in the
 #   current directory.
 # To build all apps and store them in out_dir:
-#   $ ./build_ios_examples.sh -d out_dir -b
+#   $ ./build_desktop_examples.sh -d out_dir -b
 #   Omitting -d and the associated directory saves all generated apps in the
 #   current directory.
 # To run all apps already stored in out_dir:
-#   $ ./build_ios_examples.sh -d out_dir -r
+#   $ ./build_desktop_examples.sh -d out_dir -r
 #   Omitting -d and the associated directory assumes all apps are in the current
 #   directory.
 
@@ -83,7 +83,7 @@ for app in ${apps}; do
       bazel_flags=("${default_bazel_flags[@]}")
       bazel_flags+=(${target})
 
-      bazel "${bazel_flags[@]}"
+      bazelisk "${bazel_flags[@]}"
       cp -f "${bin_dir}/${app}/"*"_cpu" "${out_dir}"
     fi
     if [[ $build_only == false ]]; then
@@ -97,6 +97,7 @@ for app in ${apps}; do
       if [[ ${target_name} == "holistic_tracking" ||
             ${target_name} == "iris_tracking" ||
             ${target_name} == "pose_tracking" ||
+            ${target_name} == "selfie_segmentation" ||
             ${target_name} == "upper_body_pose_tracking" ]]; then
         graph_suffix="cpu"
       else

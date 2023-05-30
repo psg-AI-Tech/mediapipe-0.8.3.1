@@ -30,26 +30,26 @@ namespace mediapipe {
 typedef ConcatenateVectorCalculator<int> TestConcatenateIntVectorCalculator;
 MEDIAPIPE_REGISTER_NODE(TestConcatenateIntVectorCalculator);
 
-void AddInputVector(int index, const std::vector<int>& input, int64 timestamp,
+void AddInputVector(int index, const std::vector<int>& input, int64_t timestamp,
                     CalculatorRunner* runner) {
   runner->MutableInputs()->Index(index).packets.push_back(
       MakePacket<std::vector<int>>(input).At(Timestamp(timestamp)));
 }
 
 void AddInputVectors(const std::vector<std::vector<int>>& inputs,
-                     int64 timestamp, CalculatorRunner* runner) {
+                     int64_t timestamp, CalculatorRunner* runner) {
   for (int i = 0; i < inputs.size(); ++i) {
     AddInputVector(i, inputs[i], timestamp, runner);
   }
 }
 
-void AddInputItem(int index, int input, int64 timestamp,
+void AddInputItem(int index, int input, int64_t timestamp,
                   CalculatorRunner* runner) {
   runner->MutableInputs()->Index(index).packets.push_back(
       MakePacket<int>(input).At(Timestamp(timestamp)));
 }
 
-void AddInputItems(const std::vector<int>& inputs, int64 timestamp,
+void AddInputItems(const std::vector<int>& inputs, int64_t timestamp,
                    CalculatorRunner* runner) {
   for (int i = 0; i < inputs.size(); ++i) {
     AddInputItem(i, inputs[i], timestamp, runner);
@@ -279,7 +279,7 @@ TEST(TestConcatenateIntVectorCalculatorTest, MixedVectorsAndItemsAnother) {
 }
 
 void AddInputVectors(const std::vector<std::vector<float>>& inputs,
-                     int64 timestamp, CalculatorRunner* runner) {
+                     int64_t timestamp, CalculatorRunner* runner) {
   for (int i = 0; i < inputs.size(); ++i) {
     runner->MutableInputs()->Index(i).packets.push_back(
         MakePacket<std::vector<float>>(inputs[i]).At(Timestamp(timestamp)));
@@ -392,7 +392,7 @@ TEST(TestConcatenateUniqueIntVectorCalculatorTest, ConsumeOneTimestamp) {
    * The test needs to send packets that own the data.
    */
   CalculatorGraphConfig graph_config =
-      ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: "in_1"
         input_stream: "in_2"
         input_stream: "in_3"
@@ -403,7 +403,7 @@ TEST(TestConcatenateUniqueIntVectorCalculatorTest, ConsumeOneTimestamp) {
           input_stream: "in_3"
           output_stream: "out"
         }
-      )");
+      )pb");
 
   std::vector<Packet> outputs;
   tool::AddVectorSink("out", &graph_config, &outputs);
@@ -456,7 +456,7 @@ TEST(TestConcatenateUniqueIntVectorCalculatorTest, OneEmptyStreamStillOutput) {
    * The test needs to send packets that own the data.
    */
   CalculatorGraphConfig graph_config =
-      ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: "in_1"
         input_stream: "in_2"
         node {
@@ -465,7 +465,7 @@ TEST(TestConcatenateUniqueIntVectorCalculatorTest, OneEmptyStreamStillOutput) {
           input_stream: "in_2"
           output_stream: "out"
         }
-      )");
+      )pb");
 
   std::vector<Packet> outputs;
   tool::AddVectorSink("out", &graph_config, &outputs);
@@ -505,7 +505,7 @@ TEST(TestConcatenateUniqueIntVectorCalculatorTest, OneEmptyStreamNoOutput) {
    * The test needs to send packets that own the data.
    */
   CalculatorGraphConfig graph_config =
-      ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: "in_1"
         input_stream: "in_2"
         node {
@@ -519,7 +519,7 @@ TEST(TestConcatenateUniqueIntVectorCalculatorTest, OneEmptyStreamNoOutput) {
             }
           }
         }
-      )");
+      )pb");
 
   std::vector<Packet> outputs;
   tool::AddVectorSink("out", &graph_config, &outputs);

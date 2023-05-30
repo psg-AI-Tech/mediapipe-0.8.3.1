@@ -1,13 +1,6 @@
 package(
-    default_visibility = [":preview_users"],
+    default_visibility = ["//visibility:public"],
     features = ["-use_header_modules"],
-)
-
-package_group(
-    name = "preview_users",
-    packages = [
-        "//mediapipe/...",
-    ],
 )
 
 licenses(["notice"])
@@ -21,14 +14,14 @@ cc_library(
     name = "builder",
     hdrs = ["builder.h"],
     deps = [
-        ":const_str",
-        ":contract",
-        ":node",
-        ":packet",
         ":port",
         "//mediapipe/framework:calculator_base",
         "//mediapipe/framework:calculator_contract",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "//mediapipe/framework/port:any_proto",
+        "//mediapipe/framework/port:ret_check",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -43,9 +36,10 @@ cc_test(
         ":tag",
         ":test_contracts",
         "//mediapipe/framework:calculator_framework",
-        "//mediapipe/framework/deps:message_matchers",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:parse_text_proto",
+        "//mediapipe/framework/testdata:night_light_calculator_cc_proto",
+        "//mediapipe/framework/testdata:sky_light_calculator_cc_proto",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -142,6 +136,7 @@ cc_test(
     deps = [
         ":packet",
         "//mediapipe/framework/port:gtest_main",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -156,6 +151,7 @@ cc_library(
         "//mediapipe/framework:calculator_contract",
         "//mediapipe/framework:output_side_packet",
         "//mediapipe/framework/port:logging",
+        "//mediapipe/framework/tool:type_util",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -169,6 +165,7 @@ cc_test(
     deps = [
         ":port",
         "//mediapipe/framework/port:gtest_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -182,7 +179,6 @@ cc_test(
         ":port",
         ":test_contracts",
         "//mediapipe/framework:calculator_framework",
-        "//mediapipe/framework/deps:message_matchers",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:parse_text_proto",
         "//mediapipe/framework/tool:subgraph_expansion",

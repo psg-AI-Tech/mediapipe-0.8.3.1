@@ -13,11 +13,14 @@
 # limitations under the License.
 #
 
+load("@rules_foreign_cc//tools/build_defs:cmake.bzl", "cmake_external")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 licenses(["notice"])  # Apache License 2.0
 
-exports_files(["LICENSE"])
-
 package(default_visibility = ["//visibility:public"])
+
+exports_files(["LICENSE"])
 
 cc_library(
     name = "glog",
@@ -61,16 +64,73 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "opencv_ios_arm64_source_build",
+    define_values = {
+        "OPENCV": "source",
+    },
+    values = {
+        "apple_platform_type": "ios",
+        "cpu": "ios_arm64",
+    },
+)
+
+config_setting(
+    name = "opencv_ios_sim_arm64_source_build",
+    define_values = {
+        "OPENCV": "source",
+    },
+    values = {
+        "apple_platform_type": "ios",
+        "cpu": "ios_sim_arm64",
+    },
+)
+
+config_setting(
+    name = "opencv_ios_x86_64_source_build",
+    define_values = {
+        "OPENCV": "source",
+    },
+    values = {
+        "apple_platform_type": "ios",
+        "cpu": "ios_x86_64",
+    },
+)
+
+config_setting(
+    name = "opencv_ios_sim_fat_source_build",
+    define_values = {
+        "OPENCV": "source",
+    },
+    values = {
+        "apple_platform_type": "ios",
+        "ios_multi_cpus": "sim_arm64,x86_64",
+    },
+)
+
 alias(
     name = "opencv",
     actual = select({
-        # ":opencv_source_build": ":opencv_cmake",
+        ":opencv_source_build": ":opencv_cmake",
+        ":opencv_ios_sim_arm64_source_build": "@ios_opencv_source//:opencv",
+        ":opencv_ios_arm64_source_build": "@ios_opencv_source//:opencv",
+        ":opencv_ios_x86_64_source_build": "@ios_opencv_source//:opencv",
         "//conditions:default": ":opencv_binary",
     }),
     visibility = ["//visibility:public"],
 )
 
-load("@rules_foreign_cc//tools/build_defs:cmake.bzl", "cmake_external")
+bzl_library(
+    name = "opencv_ios_xcframework_files_bzl",
+    srcs = ["opencv_ios_xcframework_files.bzl"],
+    visibility = ["//visibility:private"],
+)
+
+bzl_library(
+    name = "opencv_ios_source_bzl",
+    srcs = ["opencv_ios_source.bzl"],
+    visibility = ["//visibility:private"],
+)
 
 # Note: this determines the order in which the libraries are passed to the
 # linker, so if library A depends on library B, library B must come _after_.
@@ -90,7 +150,7 @@ OPENCV_MODULES = [
 # still only builds the shared libraries, so we have to choose one or the
 # other. We build shared libraries by default, but this variable can be used
 # to switch to static libraries.
-OPENCV_SHARED_LIBS = False
+OPENCV_SHARED_LIBS = True
 
 OPENCV_SO_VERSION = "3.4"
 
@@ -109,7 +169,16 @@ cmake_external(
         "BUILD_SHARED_LIBS": "ON" if OPENCV_SHARED_LIBS else "OFF",
         "WITH_ITT": "OFF",
         "WITH_JASPER": "OFF",
+        "WITH_JPEG": "ON",
+        "WITH_PNG": "ON",
+        "WITH_TIFF": "ON",
+        "WITH_OPENCL": "OFF",
         "WITH_WEBP": "OFF",
+        # Optimization flags
+        "CV_ENABLE_INTRINSICS": "ON",
+        "WITH_EIGEN": "ON",
+        "WITH_PTHREADS": "ON",
+        "WITH_PTHREADS_PF": "ON",
         # When building tests, by default Bazel builds them in dynamic mode.
         # See https://docs.bazel.build/versions/master/be/c-cpp.html#cc_binary.linkstatic
         # For example, when building //mediapipe/calculators/video:opencv_video_encoder_calculator_test,
@@ -276,5 +345,36 @@ android_library(
     name = "camerax_lifecycle",
     exports = [
         "@maven//:androidx_camera_camera_lifecycle",
+    ],
+)
+
+java_plugin(
+    name = "autovalue_plugin",
+    processor_class = "com.google.auto.value.processor.AutoValueProcessor",
+    deps = [
+        "@maven//:com_google_auto_value_auto_value",
+        "@maven//:com_google_auto_value_auto_value_annotations",
+    ],
+)
+
+java_plugin(
+    name = "autobuilder_plugin",
+    processor_class = "com.google.auto.value.processor.AutoBuilderProcessor",
+    deps = [
+        "@maven//:com_google_auto_value_auto_value",
+        "@maven//:com_google_auto_value_auto_value_annotations",
+    ],
+)
+
+java_library(
+    name = "autovalue",
+    exported_plugins = [
+        ":autovalue_plugin",
+        ":autobuilder_plugin",
+    ],
+    neverlink = 1,
+    exports = [
+        "@maven//:com_google_auto_value_auto_value",
+        "@maven//:com_google_auto_value_auto_value_annotations",
     ],
 )

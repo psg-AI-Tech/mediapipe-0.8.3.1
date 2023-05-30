@@ -21,47 +21,48 @@
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "mediapipe/framework/api2/const_str.h"
 #include "mediapipe/framework/api2/packet.h"
 #include "mediapipe/framework/calculator_context.h"
 #include "mediapipe/framework/calculator_contract.h"
 #include "mediapipe/framework/output_side_packet.h"
 #include "mediapipe/framework/port/logging.h"
+#include "mediapipe/framework/tool/type_util.h"
 
 namespace mediapipe {
 namespace api2 {
-
-// typeid is not constexpr, but a pointer to this is.
-template <typename T>
-size_t get_type_hash() {
-  return typeid(T).hash_code();
-}
-
-using type_id_fptr = size_t (*)();
 
 // This is a base class for various types of port. It is not meant to be used
 // directly by node code.
 class PortBase {
  public:
-  constexpr PortBase(std::size_t tag_size, const char* tag,
-                     type_id_fptr get_type_id, bool optional, bool multiple)
+  constexpr PortBase(absl::string_view tag, TypeId type_id, bool optional,
+                     bool multiple)
+      : tag_(tag.size(), tag.data()),
+        optional_(optional),
+        multiple_(multiple),
+        type_id_(type_id) {}
+
+  constexpr PortBase(std::size_t tag_size, const char* tag, TypeId type_id,
+                     bool optional, bool multiple)
       : tag_(tag_size, tag),
         optional_(optional),
         multiple_(multiple),
-        type_id_getter_(get_type_id) {}
+        type_id_(type_id) {}
 
   bool IsOptional() const { return optional_; }
   bool IsMultiple() const { return multiple_; }
   const char* Tag() const { return tag_.data(); }
 
-  size_t type_id() const { return type_id_getter_(); }
+  TypeId type_id() const { return type_id_; }
 
   const const_str tag_;
   const bool optional_;
   const bool multiple_;
 
  protected:
-  type_id_fptr type_id_getter_;
+  TypeId type_id_;
 };
 
 // These four base classes are used to distinguish between ports of different
@@ -80,18 +81,12 @@ class SideOutputBase : public PortBase {
 };
 
 struct NoneType {
- private:
   NoneType() = delete;
 };
 
-struct DynamicType {};
-
-struct AnyType : public DynamicType {};
-
-template <auto& P>
-class SameType : public DynamicType {
- public:
-  static constexpr const decltype(P)& kPort = P;
+template <auto& kP>
+struct SameType {
+  static constexpr const decltype(kP)& kPort = kP;
 };
 
 class PacketTypeAccess;
@@ -136,7 +131,7 @@ auto GetCollection(CC* cc, const SideOutputBase& port)
 }
 
 template <class Collection>
-auto GetOrNull(Collection& collection, const std::string& tag, int index)
+auto GetOrNull(Collection& collection, const absl::string_view& tag, int index)
     -> decltype(&collection.Get(std::declval<CollectionItemId>())) {
   CollectionItemId id = collection.GetId(tag, index);
   return id.IsValid() ? &collection.Get(id) : nullptr;
@@ -148,21 +143,28 @@ struct IsOneOf : std::false_type {};
 template <class... T>
 struct IsOneOf<OneOf<T...>> : std::true_type {};
 
-template <typename T, typename std::enable_if<
-                          !std::is_base_of<DynamicType, T>{} && !IsOneOf<T>{},
-                          int>::type = 0>
+template <class T>
+struct IsSameType : std::false_type {};
+
+template <class P, P& kP>
+struct IsSameType<SameType<kP>> : std::true_type {};
+
+template <typename T,
+          typename std::enable_if<!std::is_same<T, AnyType>{} &&
+                                      !IsOneOf<T>{} && !IsSameType<T>{},
+                                  int>::type = 0>
 inline void SetType(CalculatorContract* cc, PacketType& pt) {
   pt.Set<T>();
 }
 
-template <typename T, typename std::enable_if<std::is_base_of<DynamicType, T>{},
-                                              int>::type = 0>
+template <typename T, typename std::enable_if<IsSameType<T>{}, int>::type = 0>
 inline void SetType(CalculatorContract* cc, PacketType& pt) {
   pt.SetSameAs(&internal::GetCollection(cc, T::kPort).Tag(T::kPort.Tag()));
 }
 
-template <>
-inline void SetType<AnyType>(CalculatorContract* cc, PacketType& pt) {
+template <typename T,
+          typename std::enable_if<std::is_same<T, AnyType>{}, int>::type = 0>
+inline void SetType(CalculatorContract* cc, PacketType& pt) {
   pt.SetAny();
 }
 
@@ -172,9 +174,14 @@ inline void SetType<NoneType>(CalculatorContract* cc, PacketType& pt) {
   pt.SetNone();
 }
 
+template <typename... T>
+inline void SetTypeOneOf(OneOf<T...>, CalculatorContract* cc, PacketType& pt) {
+  pt.SetOneOf<T...>();
+}
+
 template <typename T, typename std::enable_if<IsOneOf<T>{}, int>::type = 0>
 inline void SetType(CalculatorContract* cc, PacketType& pt) {
-  pt.SetAny();
+  SetTypeOneOf(T{}, cc, pt);
 }
 
 template <typename ValueT>
@@ -294,14 +301,26 @@ struct SideBase<InputBase> {
   using type = SideInputBase;
 };
 
+// TODO: maybe return a PacketBase instead of a Packet<internal::Generic>?
+template <typename T, typename = void>
+struct ActualPayloadType {
+  using type = T;
+};
+
+template <typename T>
+struct ActualPayloadType<T, std::enable_if_t<IsSameType<T>{}, void>> {
+  using type = typename ActualPayloadType<
+      typename std::decay_t<decltype(T::kPort)>::value_t>::type;
+};
+
 }  // namespace internal
 
-// TODO: maybe return a PacketBase instead of a Packet<internal::Generic>?
-template <typename T, typename std::enable_if<
-                          !std::is_base_of<DynamicType, T>{}, int>::type = 0>
-auto ActualValueT(T) -> T;
+// Maps special port value types, such as AnyType, to internal::Generic.
+template <typename T>
+using ActualPayloadT = typename internal::ActualPayloadType<T>::type;
 
-auto ActualValueT(DynamicType) -> internal::Generic;
+static_assert(std::is_same_v<ActualPayloadT<int>, int>, "");
+static_assert(std::is_same_v<ActualPayloadT<AnyType>, internal::Generic>, "");
 
 template <typename Base, typename ValueT, bool IsOptional = false,
           bool IsMultiple = false>
@@ -321,11 +340,14 @@ class PortCommon : public Base {
   using Multiple = PortCommon<Base, ValueT, IsOptionalV, true>;
   using SideFallback = SideFallbackT<Base, ValueT, IsOptionalV, IsMultipleV>;
 
+  explicit constexpr PortCommon(absl::string_view tag)
+      : Base(tag, kTypeId<ValueT>, IsOptionalV, IsMultipleV) {}
+
   template <std::size_t N>
   explicit constexpr PortCommon(const char (&tag)[N])
-      : Base(N, tag, &get_type_hash<ValueT>, IsOptionalV, IsMultipleV) {}
+      : Base(N, tag, kTypeId<ValueT>, IsOptionalV, IsMultipleV) {}
 
-  using PayloadT = decltype(ActualValueT(std::declval<ValueT>()));
+  using PayloadT = ActualPayloadT<ValueT>;
 
   auto operator()(CalculatorContext* cc) const {
     return internal::AccessPort<PayloadT>(
@@ -385,7 +407,7 @@ class SideFallbackT : public Base {
   static constexpr bool kOptional = IsOptionalV;
   static constexpr bool kMultiple = IsMultipleV;
   using Optional = SideFallbackT<Base, ValueT, true, IsMultipleV>;
-  using PayloadT = decltype(ActualValueT(std::declval<ValueT>()));
+  using PayloadT = ActualPayloadT<ValueT>;
 
   const char* Tag() const { return stream_port.Tag(); }
 
@@ -411,7 +433,7 @@ class SideFallbackT : public Base {
 
   template <std::size_t N>
   explicit constexpr SideFallbackT(const char (&tag)[N])
-      : Base(N, tag, &get_type_hash<ValueT>, IsOptionalV, IsMultipleV),
+      : Base(N, tag, kTypeId<ValueT>, IsOptionalV, IsMultipleV),
         stream_port(tag),
         side_port(tag) {}
 
@@ -445,21 +467,29 @@ class SideFallbackT : public Base {
 // CalculatorContext (e.g. kOut(cc)), and provides a type-safe interface to
 // OutputStreamShard. Like that class, this class will not be usually named in
 // calculator code, but used as a temporary object (e.g. kOut(cc).Send(...)).
+//
+// If not connected (!IsConnected()) SetNextTimestampBound is safe to call and
+// does nothing.
+// All the sub-classes that define Send should implement it to be safe to to
+// call if not connected and do nothing in such case.
 class OutputShardAccessBase {
  public:
   OutputShardAccessBase(const CalculatorContext& cc, OutputStreamShard* output)
       : context_(cc), output_(output) {}
 
+  Timestamp NextTimestampBound() const {
+    return (output_) ? output_->NextTimestampBound() : Timestamp::Unset();
+  }
   void SetNextTimestampBound(Timestamp timestamp) {
     if (output_) output_->SetNextTimestampBound(timestamp);
   }
 
-  bool IsClosed() { return output_ ? output_->IsClosed() : true; }
+  bool IsClosed() const { return output_ ? output_->IsClosed() : true; }
   void Close() {
     if (output_) output_->Close();
   }
 
-  bool IsConnected() { return output_ != nullptr; }
+  bool IsConnected() const { return output_ != nullptr; }
 
  protected:
   const CalculatorContext& context_;
@@ -497,6 +527,10 @@ class OutputShardAccess : public OutputShardAccessBase {
 
   void Send(std::unique_ptr<T> payload) {
     Send(std::move(payload), context_.InputTimestamp());
+  }
+
+  void SetHeader(const PacketBase& header) {
+    if (output_) output_->SetHeader(ToOldPacket(header));
   }
 
  private:
@@ -539,8 +573,8 @@ class OutputSidePacketAccess {
     if (output_) output_->Set(ToOldPacket(std::move(packet)));
   }
 
-  void Set(const T& payload) { Set(MakePacket<T>(payload)); }
-  void Set(T&& payload) { Set(MakePacket<T>(std::move(payload))); }
+  void Set(const T& payload) { Set(api2::MakePacket<T>(payload)); }
+  void Set(T&& payload) { Set(api2::MakePacket<T>(std::move(payload))); }
 
  private:
   OutputSidePacketAccess(OutputSidePacket* output) : output_(output) {}
@@ -559,7 +593,7 @@ class InputShardAccess : public Packet<T> {
   PacketBase packet() const&& { return *this; }
 
   bool IsDone() const { return stream_->IsDone(); }
-  bool IsConnected() { return stream_ != nullptr; }
+  bool IsConnected() const { return stream_ != nullptr; }
 
   PacketBase Header() const { return FromOldPacket(stream_->Header()); }
 
@@ -619,7 +653,7 @@ class InputSidePacketAccess : public Packet<T> {
   const PacketBase& packet() const& { return *this; }
   PacketBase packet() const&& { return *this; }
 
-  bool IsConnected() { return connected_; }
+  bool IsConnected() const { return connected_; }
 
  private:
   InputSidePacketAccess(const mediapipe::Packet* packet)
@@ -639,8 +673,8 @@ class InputShardOrSideAccess : public Packet<T> {
   PacketBase packet() const&& { return *this; }
 
   bool IsDone() const { return stream_->IsDone(); }
-  bool IsConnected() { return connected_; }
-  bool IsStream() { return stream_ != nullptr; }
+  bool IsConnected() const { return connected_; }
+  bool IsStream() const { return stream_ != nullptr; }
 
   PacketBase Header() const { return FromOldPacket(stream_->Header()); }
 
@@ -662,7 +696,7 @@ class InputShardOrSideAccess : public Packet<T> {
 
 class PacketTypeAccess {
  public:
-  bool IsConnected() { return packet_type_ != nullptr; }
+  bool IsConnected() const { return packet_type_ != nullptr; }
 
  protected:
   PacketTypeAccess(PacketType* pt) : packet_type_(pt) {}
@@ -675,7 +709,7 @@ class PacketTypeAccess {
 
 class PacketTypeAccessFallback : public PacketTypeAccess {
  public:
-  bool IsStream() { return is_stream_; }
+  bool IsStream() const { return is_stream_; }
 
  private:
   PacketTypeAccessFallback(PacketType* pt, bool is_stream)

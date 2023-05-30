@@ -12,31 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-licenses(["notice"])
+load("//mediapipe/framework/port:build_config.bzl", "mediapipe_proto_library")
 
-load("//mediapipe/framework/port:build_config.bzl", "mediapipe_cc_proto_library")
+licenses(["notice"])
 
 package(default_visibility = ["//visibility:private"])
 
-proto_library(
+mediapipe_proto_library(
     name = "callback_packet_calculator_proto",
     srcs = ["callback_packet_calculator.proto"],
-    visibility = ["//visibility:public"],
-    deps = ["//mediapipe/framework:calculator_proto"],
-)
-
-mediapipe_cc_proto_library(
-    name = "callback_packet_calculator_cc_proto",
-    srcs = ["callback_packet_calculator.proto"],
-    cc_deps = ["//mediapipe/framework:calculator_cc_proto"],
-    visibility = ["//visibility:public"],
-    deps = [":callback_packet_calculator_proto"],
+    visibility = ["//mediapipe/framework:__subpackages__"],
+    deps = [
+        "//mediapipe/framework:calculator_options_proto",
+        "//mediapipe/framework:calculator_proto",
+    ],
 )
 
 cc_library(
     name = "callback_packet_calculator",
     srcs = ["callback_packet_calculator.cc"],
-    visibility = ["//visibility:public"],
+    visibility = ["//mediapipe/framework:__subpackages__"],
     deps = [
         ":callback_packet_calculator_cc_proto",
         "//mediapipe/framework:calculator_base",

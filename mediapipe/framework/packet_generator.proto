@@ -17,18 +17,30 @@
 // ONLY used by mediapipe open source project.
 //
 // Messages for specifying PacketGenerators.
+// DEPRECATED: Use a Node to generate side packets.
 
 syntax = "proto2";
 
 package mediapipe;
 
+option java_package = "com.google.mediapipe.proto";
+option java_outer_classname = "PacketGeneratorProto";
+
 // Options used by a PacketGenerator.
 message PacketGeneratorOptions {
+  option deprecated = true;
+
+  // If true, this proto specifies a subset of field values,
+  // which should override corresponding field values.
+  optional bool merge_fields = 1 [default = true];
+
   extensions 20000 to max;
 }
 
 // The settings specifying a packet generator and how it is connected.
 message PacketGeneratorConfig {
+  option deprecated = true;
+
   // The name of the registered packet generator class.
   optional string packet_generator = 1;
 

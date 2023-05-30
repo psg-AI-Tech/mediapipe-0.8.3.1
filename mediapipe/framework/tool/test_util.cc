@@ -18,18 +18,29 @@
 #include <unistd.h>
 
 #include <memory>
+#include <string>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/deps/no_destructor.h"
+#include "mediapipe/framework/formats/image_format.pb.h"
 #include "mediapipe/framework/port/advanced_proto_inc.h"
 #include "mediapipe/framework/port/file_helpers.h"
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/proto_ns.h"
+#include "mediapipe/framework/port/ret_check.h"
+#include "mediapipe/framework/port/status_macros.h"
+#include "stb_image.h"
+#include "stb_image_write.h"
 
 namespace mediapipe {
 
@@ -43,14 +54,13 @@ bool EqualWithTolerance(const T value1, const T value2, const T max_diff) {
 }
 
 template <typename T>
-bool CompareDiff(const ImageFrame& image1, const ImageFrame& image2,
-                 const T max_color_diff, const T max_alpha_diff,
-                 const float max_avg_diff, std::string* error_message) {
+absl::Status CompareDiff(const ImageFrame& image1, const ImageFrame& image2,
+                         const T max_color_diff, const T max_alpha_diff,
+                         const float max_avg_diff,
+                         std::unique_ptr<ImageFrame>& diff_image) {
   // Verify image byte depth matches expected byte depth.
   CHECK_EQ(sizeof(T), image1.ByteDepth());
   CHECK_EQ(sizeof(T), image2.ByteDepth());
-
-  const bool return_error = error_message != nullptr;
 
   const int width = image1.Width();
   const int height = image1.Height();
@@ -68,57 +78,64 @@ bool CompareDiff(const ImageFrame& image1, const ImageFrame& image2,
   const int width_padding2 =
       image2.WidthStep() / image2.ByteDepth() - width * channels2;
 
+  diff_image = std::make_unique<ImageFrame>(image1.Format(), width, height);
+  T* pixel_diff = reinterpret_cast<T*>(diff_image->MutablePixelData());
+  const int width_padding_diff =
+      diff_image->WidthStep() / diff_image->ByteDepth() - width * channels1;
+
   float avg_diff = 0;
-  uint diff_count = 0;
+  uint total_count = 0;
+  int different_color_components = 0;
+  float max_color_diff_found = 0;
+  int different_alpha_components = 0;
+  float max_alpha_diff_found = 0;
   for (int row = 0; row < height; ++row) {
     for (int col = 0; col < width; ++col) {
       for (int channel = 0; channel < num_channels; ++channel) {
         // Check local difference.
-        const T max_diff = channel < 3 ? max_color_diff : max_alpha_diff;
         const T value1 = pixel1[channel];
         const T value2 = pixel2[channel];
-        if (!EqualWithTolerance<T>(value1, value2, max_diff)) {
-          // We cast uint8 to int using this type (and leave other values as-is)
-          // to avoid printing as a single char.
-          using TypeToPrint =
-              typename std::conditional<std::is_same<T, uint8>::value, int,
-                                        T>::type;
-          std::string error = absl::Substitute(
-              "images differ: row = $0 col = $1 channel = $2 : pixel1 = $3, "
-              "pixel2 = $4",
-              row, col, channel, static_cast<TypeToPrint>(value1),
-              static_cast<TypeToPrint>(value2));
-          if (return_error) {
-            *error_message = error;
-          } else {
-            LOG(ERROR) << error;
-          }
-          return false;
-        }
-        // Check global average difference.
         const float diff =
             std::abs(static_cast<float>(value1) - static_cast<float>(value2));
-        avg_diff += (diff - avg_diff) / ++diff_count;
+        if (channel < 3) {
+          different_color_components += diff > max_color_diff;
+          max_color_diff_found = std::max(max_color_diff_found, diff);
+          pixel_diff[channel] = diff;
+        } else {
+          different_alpha_components += diff > max_alpha_diff;
+          max_alpha_diff_found = std::max(max_alpha_diff_found, diff);
+          pixel_diff[channel] = 255;  // opaque to see color difference
+        }
+        // Check global average difference.
+        avg_diff += (diff - avg_diff) / ++total_count;
       }
       pixel1 += channels1;
       pixel2 += channels2;
+      pixel_diff += channels1;
     }
     pixel1 += width_padding1;
     pixel2 += width_padding2;
+    pixel_diff += width_padding_diff;
   }
 
-  if (avg_diff > max_avg_diff) {
-    std::string error =
-        absl::Substitute("images differ: avg pixel error = $0", avg_diff);
-    if (return_error) {
-      *error_message = error;
-    } else {
-      LOG(ERROR) << error;
-    }
-    return false;
-  }
+  std::vector<std::string> errors;
+  if (different_color_components)
+    errors.push_back(absl::Substitute(
+        "$0 color components differences above limit of $1, max found was $2",
+        different_color_components, max_color_diff, max_color_diff_found));
+  if (different_alpha_components)
+    errors.push_back(absl::Substitute(
+        "$0 alpha components differences above limit of $1, max found was $2",
+        different_alpha_components, max_alpha_diff, max_alpha_diff_found));
+  if (avg_diff > max_avg_diff)
+    errors.push_back(
+        absl::Substitute("the average component difference is $0 (limit: $1)",
+                         avg_diff, max_avg_diff));
 
-  return true;
+  if (!errors.empty())
+    return absl::InternalError(
+        absl::StrCat("images differ: ", absl::StrJoin(errors, "; ")));
+  return absl::OkStatus();
 }
 
 #if defined(__linux__)
@@ -134,128 +151,184 @@ std::string GetBinaryDirectory() {
 
 }  // namespace
 
-bool CompareImageFrames(const ImageFrame& image1, const ImageFrame& image2,
-                        const float max_color_diff, const float max_alpha_diff,
-                        const float max_avg_diff, std::string* error_message) {
-  const bool return_error = error_message != nullptr;
-
-  auto IsSupportedImageFormatComparison = [](const ImageFrame& image1,
-                                             const ImageFrame& image2) {
-    // Pairs of non-equal image formats that can be compared against each other.
-    static const mediapipe::NoDestructor<absl::flat_hash_set<
-        std::pair<ImageFormat::Format, ImageFormat::Format>>>
-        kCompatibleImageFormats({
-            {ImageFormat::SRGB, ImageFormat::SRGBA},
-            {ImageFormat::SRGB48, ImageFormat::SRGBA64},
-        });
-
-    auto* compatible_image_formats = kCompatibleImageFormats.get();
-
-    return image1.Format() == image2.Format() ||
-           compatible_image_formats->contains(
-               {image1.Format(), image2.Format()}) ||
-           compatible_image_formats->contains(
-               {image2.Format(), image1.Format()});
+absl::Status CompareImageFrames(const ImageFrame& image1,
+                                const ImageFrame& image2,
+                                const float max_color_diff,
+                                const float max_alpha_diff,
+                                const float max_avg_diff,
+                                std::unique_ptr<ImageFrame>& diff_image) {
+  auto IsSupportedImageFormatComparison = [](ImageFormat::Format one,
+                                             ImageFormat::Format two) {
+    auto both = std::minmax(one, two);
+    return one == two ||
+           both == std::minmax(ImageFormat::SRGB, ImageFormat::SRGBA) ||
+           both == std::minmax(ImageFormat::SRGB48, ImageFormat::SRGBA64);
   };
 
-  if (!IsSupportedImageFormatComparison(image1, image2)) {
-    std::string error = absl::Substitute(
-        "unsupported image format comparison; image1 = $0, image2 = $1",
-        image1.Format(), image2.Format());
-    if (return_error) {
-      *error_message = error;
-    } else {
-      LOG(ERROR) << error;
-    }
-    return false;
-  }
+  RET_CHECK(IsSupportedImageFormatComparison(image1.Format(), image2.Format()))
+      << "unsupported image format comparison; image1 = " << image1.Format()
+      << ", image2 = " << image2.Format();
 
-  if (image1.Width() != image2.Width()) {
-    std::string error =
-        absl::Substitute("image width mismatch: image1 = $0, image2 = $1",
-                         image1.Width(), image2.Width());
-    if (return_error) {
-      *error_message = error;
-    } else {
-      LOG(ERROR) << error;
-    }
-    return false;
-  }
+  // Cannot use RET_CHECK_EQ because pair is not printable.
+  RET_CHECK(std::make_pair(image1.Width(), image1.Height()) ==
+            std::make_pair(image2.Width(), image2.Height()))
+      << "image size mismatch: " << image1.Width() << "x" << image1.Height()
+      << " != " << image2.Width() << "x" << image2.Height();
 
-  if (image1.Height() != image2.Height()) {
-    std::string error =
-        absl::Substitute("image height mismatch: image1 = $0, image2 = $1",
-                         image1.Height(), image2.Height());
-    if (return_error) {
-      *error_message = error;
-    } else {
-      LOG(ERROR) << error;
-    }
-    return false;
-  }
-
-  if (image1.ByteDepth() != image2.ByteDepth()) {
-    std::string error =
-        absl::Substitute("image byte depth mismatch: image1 = $0, image2 = $1",
-                         image1.ByteDepth(), image2.ByteDepth());
-    if (return_error) {
-      *error_message = error;
-    } else {
-      LOG(ERROR) << error;
-    }
-    return false;
-  }
+  RET_CHECK_EQ(image1.ByteDepth(), image2.ByteDepth())
+      << "image byte depth mismatch";
 
   switch (image1.Format()) {
     case ImageFormat::GRAY8:
     case ImageFormat::SRGB:
     case ImageFormat::SRGBA:
     case ImageFormat::LAB8:
-      return CompareDiff<uint8>(image1, image2, max_color_diff, max_alpha_diff,
-                                max_avg_diff, error_message);
+      return CompareDiff<uint8_t>(image1, image2, max_color_diff,
+                                  max_alpha_diff, max_avg_diff, diff_image);
     case ImageFormat::GRAY16:
     case ImageFormat::SRGB48:
     case ImageFormat::SRGBA64:
-      return CompareDiff<uint16>(image1, image2, max_color_diff, max_alpha_diff,
-                                 max_avg_diff, error_message);
+      return CompareDiff<uint16_t>(image1, image2, max_color_diff,
+                                   max_alpha_diff, max_avg_diff, diff_image);
     case ImageFormat::VEC32F1:
     case ImageFormat::VEC32F2:
+    case ImageFormat::VEC32F4:
       return CompareDiff<float>(image1, image2, max_color_diff, max_alpha_diff,
-                                max_avg_diff, error_message);
+                                max_avg_diff, diff_image);
     default:
       LOG(FATAL) << ImageFrame::InvalidFormatString(image1.Format());
   }
 }
 
-std::string GetTestRootDir() {
-#if defined(__ANDROID__)
-  char path[1024];
-  char* ptr = getcwd(path, sizeof(path));
-  CHECK_EQ(ptr, path);
-  return path;
-#else
-  return ::mediapipe::file::JoinPath(std::getenv("TEST_SRCDIR"), "mediapipe");
-#endif  // defined(__ANDROID__)
+bool CompareImageFrames(const ImageFrame& image1, const ImageFrame& image2,
+                        const float max_color_diff, const float max_alpha_diff,
+                        const float max_avg_diff, std::string* error_message) {
+  std::unique_ptr<ImageFrame> diff_image;
+  auto status = CompareImageFrames(image1, image2, max_color_diff,
+                                   max_alpha_diff, max_avg_diff, diff_image);
+  if (status.ok()) return true;
+  if (error_message) *error_message = std::string(status.message());
+  return false;
 }
 
-std::string GetTestDataDir(const std::string& package_base_path) {
-#if defined(__ANDROID__)
-  std::string data_dir = GetTestRootDir();
-  std::string binary_dir = GetBinaryDirectory();
-  // In Mobile Harness, the cwd is "/" and the run dir is "/data/local/tmp".
-  if (data_dir == "/" && absl::StartsWith(binary_dir, "/data")) {
-    data_dir = binary_dir;
+absl::Status CompareAndSaveImageOutput(
+    absl::string_view golden_image_path, const ImageFrame& actual,
+    const ImageFrameComparisonOptions& options) {
+  ASSIGN_OR_RETURN(auto output_img_path, SavePngTestOutput(actual, "output"));
+
+  auto expected =
+      LoadTestImage(GetTestFilePath(golden_image_path), ImageFormat::UNKNOWN);
+  if (!expected.ok()) {
+    return expected.status();
   }
-  return ::mediapipe::file::JoinPath(data_dir, package_base_path, "testdata/");
-#else
-  return ::mediapipe::file::JoinPath(GetTestRootDir(), package_base_path,
-                                     "testdata/");
-#endif  // defined(__APPLE__)
+  ASSIGN_OR_RETURN(auto expected_img_path,
+                   SavePngTestOutput(**expected, "expected"));
+
+  std::unique_ptr<ImageFrame> diff_img;
+  auto status = CompareImageFrames(**expected, actual, options.max_color_diff,
+                                   options.max_alpha_diff, options.max_avg_diff,
+                                   diff_img);
+  ASSIGN_OR_RETURN(auto diff_img_path, SavePngTestOutput(*diff_img, "diff"));
+
+  return status;
 }
 
-std::unique_ptr<ImageFrame> LoadTestPng(const std::string& path,
+std::string GetTestRootDir() {
+  return file::JoinPath(std::getenv("TEST_SRCDIR"), "mediapipe");
+}
+
+std::string GetTestOutputsDir() {
+  const char* output_dir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  if (!output_dir) {
+#ifdef __APPLE__
+    char path[PATH_MAX];
+    size_t n = confstr(_CS_DARWIN_USER_TEMP_DIR, path, sizeof(path));
+    if (n > 0 && n < sizeof(path)) return path;
+#endif  // __APPLE__
+#ifdef __ANDROID__
+    return "/data/local/tmp/";
+#endif  // __ANDROID__
+    output_dir = "/tmp";
+  }
+  return output_dir;
+}
+
+std::string GetTestDataDir(absl::string_view package_base_path) {
+  return file::JoinPath(GetTestRootDir(), package_base_path, "testdata/");
+}
+
+std::string GetTestFilePath(absl::string_view relative_path) {
+  return file::JoinPath(GetTestRootDir(), relative_path);
+}
+
+absl::StatusOr<std::unique_ptr<ImageFrame>> DecodeTestImage(
+    absl::string_view encoded, ImageFormat::Format format) {
+  // stbi_load determines the output pixel format based on the desired channels.
+  // 0 means "use whatever's in the file".
+  int desired_channels = format == ImageFormat::UNKNOWN ? 0
+                         : format == ImageFormat::SRGBA ? 4
+                         : format == ImageFormat::SRGB  ? 3
+                         : format == ImageFormat::GRAY8 ? 1
+                                                        : -1;
+  RET_CHECK(desired_channels >= 0)
+      << "unsupported output format requested: " << format;
+
+  int width, height, channels_in_file;
+  auto data = stbi_load_from_memory(
+      reinterpret_cast<const stbi_uc*>(encoded.data()), encoded.size(), &width,
+      &height, &channels_in_file, desired_channels);
+  RET_CHECK(data) << "failed to decode image data";
+
+  // If we didn't specify a desired format, it will be determined by what the
+  // file contains.
+  int output_channels = desired_channels ? desired_channels : channels_in_file;
+  if (format == ImageFormat::UNKNOWN) {
+    format = output_channels == 4   ? ImageFormat::SRGBA
+             : output_channels == 3 ? ImageFormat::SRGB
+             : output_channels == 1 ? ImageFormat::GRAY8
+                                    : ImageFormat::UNKNOWN;
+    RET_CHECK(format != ImageFormat::UNKNOWN)
+        << "unsupported number of channels: " << output_channels;
+  }
+
+  return absl::make_unique<ImageFrame>(
+      format, width, height, width * output_channels, data, stbi_image_free);
+}
+
+absl::StatusOr<std::unique_ptr<ImageFrame>> LoadTestImage(
+    absl::string_view path, ImageFormat::Format format) {
+  std::string encoded;
+  MP_RETURN_IF_ERROR(mediapipe::file::GetContents(path, &encoded));
+  return DecodeTestImage(encoded, format);
+}
+
+std::unique_ptr<ImageFrame> LoadTestPng(absl::string_view path,
                                         ImageFormat::Format format) {
   return nullptr;
+}
+
+// Write an ImageFrame as PNG to the test undeclared outputs directory.
+// The image's name will contain the given prefix and a timestamp.
+// Returns the path to the output if successful.
+absl::StatusOr<std::string> SavePngTestOutput(
+    const mediapipe::ImageFrame& image, absl::string_view prefix) {
+  absl::flat_hash_set<ImageFormat::Format> supported_formats = {
+      ImageFormat::GRAY8, ImageFormat::SRGB, ImageFormat::SRGBA,
+      ImageFormat::LAB8, ImageFormat::SBGRA};
+  if (!supported_formats.contains(image.Format())) {
+    return absl::CancelledError(
+        absl::StrFormat("Format %d can not be saved to PNG.", image.Format()));
+  }
+  std::string now_string = absl::FormatTime(absl::Now());
+  std::string output_relative_path =
+      absl::StrCat(prefix, "_", now_string, ".png");
+  std::string output_full_path =
+      file::JoinPath(GetTestOutputsDir(), output_relative_path);
+  RET_CHECK(stbi_write_png(output_full_path.c_str(), image.Width(),
+                           image.Height(), image.NumberOfChannels(),
+                           image.PixelData(), image.WidthStep()))
+      << " path: " << output_full_path;
+  return output_relative_path;
 }
 
 bool LoadTestGraph(CalculatorGraphConfig* proto, const std::string& path) {
@@ -286,17 +359,17 @@ std::unique_ptr<ImageFrame> GenerateLuminanceImage(
   auto luminance_image =
       absl::make_unique<ImageFrame>(original_image.Format(), width, height,
                                     ImageFrame::kGlDefaultAlignmentBoundary);
-  const uint8* pixel1 = original_image.PixelData();
-  uint8* pixel2 = luminance_image->MutablePixelData();
+  const uint8_t* pixel1 = original_image.PixelData();
+  uint8_t* pixel2 = luminance_image->MutablePixelData();
   const int width_padding1 = original_image.WidthStep() - width * channels;
   const int width_padding2 = luminance_image->WidthStep() - width * channels;
   for (int row = 0; row < height; ++row) {
     for (int col = 0; col < width; ++col) {
       float luminance =
           pixel1[0] * 0.2125f + pixel1[1] * 0.7154f + pixel1[2] * 0.0721f;
-      uint8 luminance_byte = 255;
+      uint8_t luminance_byte = 255;
       if (luminance < 255.0f) {
-        luminance_byte = static_cast<uint8>(luminance);
+        luminance_byte = static_cast<uint8_t>(luminance);
       }
       pixel2[0] = luminance_byte;
       pixel2[1] = luminance_byte;

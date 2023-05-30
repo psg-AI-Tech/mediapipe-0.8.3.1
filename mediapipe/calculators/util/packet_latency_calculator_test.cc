@@ -16,7 +16,6 @@
 #include "mediapipe/calculators/util/latency.pb.h"
 #include "mediapipe/framework/calculator_runner.h"
 #include "mediapipe/framework/deps/clock.h"
-#include "mediapipe/framework/deps/message_matchers.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
@@ -38,7 +37,7 @@ class PacketLatencyCalculatorTest : public ::testing::Test {
   }
 
   void InitializeSingleStreamGraph() {
-    graph_config_ = ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+    graph_config_ = ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
       input_stream: "delayed_packet_0"
       input_stream: "camera_frames"
       node {
@@ -59,7 +58,7 @@ class PacketLatencyCalculatorTest : public ::testing::Test {
           input_stream_handler: "ImmediateInputStreamHandler"
         }
       }
-    )");
+    )pb");
 
     mediapipe::tool::AddVectorSink("packet_latency_0", &graph_config_,
                                    &out_0_packets_);
@@ -79,7 +78,7 @@ class PacketLatencyCalculatorTest : public ::testing::Test {
   }
 
   void InitializeMultipleStreamGraph() {
-    graph_config_ = ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+    graph_config_ = ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
       input_stream: "delayed_packet_0"
       input_stream: "delayed_packet_1"
       input_stream: "delayed_packet_2"
@@ -107,7 +106,7 @@ class PacketLatencyCalculatorTest : public ::testing::Test {
           input_stream_handler: "ImmediateInputStreamHandler"
         }
       }
-    )");
+    )pb");
 
     mediapipe::tool::AddVectorSink("packet_latency_0", &graph_config_,
                                    &out_0_packets_);
@@ -131,7 +130,7 @@ class PacketLatencyCalculatorTest : public ::testing::Test {
   }
 
   void InitializeSingleStreamGraphWithoutClock() {
-    graph_config_ = ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+    graph_config_ = ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
       input_stream: "delayed_packet_0"
       input_stream: "camera_frames"
       node {
@@ -150,7 +149,7 @@ class PacketLatencyCalculatorTest : public ::testing::Test {
           input_stream_handler: "ImmediateInputStreamHandler"
         }
       }
-    )");
+    )pb");
 
     mediapipe::tool::AddVectorSink("packet_latency_0", &graph_config_,
                                    &out_0_packets_);
@@ -170,10 +169,10 @@ class PacketLatencyCalculatorTest : public ::testing::Test {
   }
 
   PacketLatency CreatePacketLatency(const double latency_usec,
-                                    const int64 num_intervals,
-                                    const int64 interval_size_usec,
+                                    const int64_t num_intervals,
+                                    const int64_t interval_size_usec,
                                     const std::vector<int>& counts,
-                                    const int64 avg_latency_usec,
+                                    const int64_t avg_latency_usec,
                                     const std::string& label) {
     PacketLatency latency_info;
     latency_info.set_current_latency_usec(latency_usec);

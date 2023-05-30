@@ -30,6 +30,7 @@
 #include "absl/container/node_hash_set.h"
 #include "absl/memory/memory.h"
 #include "mediapipe/framework/port/logging.h"
+#include "mediapipe/framework/port/opencv_core_inc.h"
 #include "mediapipe/framework/port/opencv_features2d_inc.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
 #include "mediapipe/framework/port/opencv_video_inc.h"
@@ -148,7 +149,7 @@ void GetPatchDescriptorAtPoint(const cv::Mat& rgb_frame, const Vector2_i& pt,
   // Compute channel sums and means.
   int sum[3] = {0, 0, 0};
   for (int y = 0; y < diameter; ++y) {
-    const uint8* data = rgb_window.ptr<uint8>(y);
+    const uint8_t* data = rgb_window.ptr<uint8_t>(y);
     for (int x = 0; x < diameter; ++x, data += 3) {
       for (int c = 0; c < 3; ++c) {
         sum[c] += data[c];
@@ -174,7 +175,7 @@ void GetPatchDescriptorAtPoint(const cv::Mat& rgb_frame, const Vector2_i& pt,
       // using N = diameter * diameter and sum[c] = N * mean[c].
       product[c][d] = -sum[c] * sum[d] * denom;
       for (int y = 0; y < diameter; ++y) {
-        const uint8* data = rgb_window.ptr<uint8>(y);
+        const uint8_t* data = rgb_window.ptr<uint8_t>(y);
         for (int x = 0; x < diameter; ++x, data += 3) {
           product[c][d] += static_cast<int>(data[c]) * data[d];
         }
@@ -354,7 +355,7 @@ struct RegionFlowComputation::FrameTrackingData {
   int frame_num = 0;
 
   // Timestamp of the underlying frame.
-  int64 timestamp_usec = 0;
+  int64_t timestamp_usec = 0;
 
   // Difference of this FrameTrackingData's tiny_image w.r.t. previous one,
   // i.e. one frame earlier.
@@ -392,7 +393,7 @@ struct RegionFlowComputation::FrameTrackingData {
 
   void BuildPyramid(int levels, int window_size, bool with_derivative) {
     if (use_cv_tracking) {
-#if CV_MAJOR_VERSION == 3
+#if CV_MAJOR_VERSION >= 3
       // No-op if not called for opencv 3.0 (c interface computes
       // pyramids in place).
       // OpenCV changed how window size gets specified from our radius setting
@@ -406,7 +407,7 @@ struct RegionFlowComputation::FrameTrackingData {
     }
   }
 
-  void Reset(int frame_num_, int64 timestamp_) {
+  void Reset(int frame_num_, int64_t timestamp_) {
     frame_num = frame_num_;
     timestamp_usec = timestamp_;
     pyramid_levels = 0;
@@ -761,7 +762,7 @@ RegionFlowComputation::RegionFlowComputation(
 
   // Tracking algorithm dependent on cv support and flag.
   use_cv_tracking_ = options_.tracking_options().use_cv_tracking_algorithm();
-#if CV_MAJOR_VERSION != 3
+#if CV_MAJOR_VERSION < 3
   if (use_cv_tracking_) {
     LOG(WARNING) << "Compiled without OpenCV 3.0 but cv_tracking_algorithm "
                  << "was requested. Falling back to older algorithm";
@@ -833,19 +834,19 @@ RegionFlowComputation::RegionFlowComputation(
 RegionFlowComputation::~RegionFlowComputation() {}
 
 bool RegionFlowComputation::AddImage(const cv::Mat& source,
-                                     int64 timestamp_usec) {
+                                     int64_t timestamp_usec) {
   return AddImageAndTrack(source, cv::Mat(), timestamp_usec, Homography());
 }
 
 bool RegionFlowComputation::AddImageWithSeed(
-    const cv::Mat& source, int64 timestamp_usec,
+    const cv::Mat& source, int64_t timestamp_usec,
     const Homography& initial_transform) {
   return AddImageAndTrack(source, cv::Mat(), timestamp_usec, initial_transform);
 }
 
 bool RegionFlowComputation::AddImageWithMask(const cv::Mat& source,
                                              const cv::Mat& source_mask,
-                                             int64 timestamp_usec) {
+                                             int64_t timestamp_usec) {
   return AddImageAndTrack(source, source_mask, timestamp_usec, Homography());
 }
 
@@ -935,12 +936,13 @@ bool RegionFlowComputation::InitFrame(const cv::Mat& source,
     // Area based method best for downsampling.
     // For color images to temporary buffer.
     cv::Mat& resized = source.channels() == 1 ? dest_frame : *curr_color_image_;
-    cv::resize(source, resized, resized.size(), 0, 0, CV_INTER_AREA);
+    cv::resize(source, resized, resized.size(), 0, 0, cv::INTER_AREA);
     source_ptr = &resized;
     // Resize feature extraction mask if needed.
     if (!source_mask.empty()) {
       dest_mask.create(resized.rows, resized.cols, CV_8UC1);
-      cv::resize(source_mask, dest_mask, dest_mask.size(), 0, 0, CV_INTER_NN);
+      cv::resize(source_mask, dest_mask, dest_mask.size(), 0, 0,
+                 cv::INTER_NEAREST);
     }
   } else if (!source_mask.empty()) {
     source_mask.copyTo(dest_mask);
@@ -954,7 +956,7 @@ bool RegionFlowComputation::InitFrame(const cv::Mat& source,
     const int dimension = visual_options.tiny_image_dimension();
     data->tiny_image.create(dimension, dimension, type);
     cv::resize(*source_ptr, data->tiny_image, data->tiny_image.size(), 0, 0,
-               CV_INTER_AREA);
+               cv::INTER_AREA);
   }
 
   if (source_ptr->channels() == 1 &&
@@ -1033,7 +1035,7 @@ bool RegionFlowComputation::InitFrame(const cv::Mat& source,
 }
 
 bool RegionFlowComputation::AddImageAndTrack(
-    const cv::Mat& source, const cv::Mat& source_mask, int64 timestamp_usec,
+    const cv::Mat& source, const cv::Mat& source_mask, int64_t timestamp_usec,
     const Homography& initial_transform) {
   VLOG(1) << "Processing frame " << frame_num_ << " at " << timestamp_usec;
   MEASURE_TIME << "AddImageAndTrack";
@@ -1620,12 +1622,12 @@ inline void SetMaskNeighborhood(int mask_x, int mask_y, cv::Mat* mask) {
 
   if (!add) {
     for (int i = mask_start_y; i <= mask_end_y; ++i) {
-      uint8* mask_ptr = mask->ptr<uint8>(i) + mask_start_x;
+      uint8_t* mask_ptr = mask->ptr<uint8_t>(i) + mask_start_x;
       memset(mask_ptr, K, mask_dx * sizeof(*mask_ptr));
     }
   } else {
     for (int i = mask_start_y; i <= mask_end_y; ++i) {
-      uint8* mask_ptr = mask->ptr<uint8>(i);
+      uint8_t* mask_ptr = mask->ptr<uint8_t>(i);
       for (int j = mask_start_x; j <= mask_end_x; ++j) {
         mask_ptr[j] = (mask_ptr[j] & 0x7F) + K;  // Limit to 128.
       }
@@ -1762,7 +1764,7 @@ void RegionFlowComputation::AdaptiveGoodFeaturesToTrack(
         const int mask_y = corner_y * mask_scale;
 
         // Test if neighboring element is already set.
-        if (mask->at<uint8>(mask_y, mask_x) >= 1) {
+        if (mask->at<uint8_t>(mask_y, mask_x) >= 1) {
           continue;
         }
 
@@ -1827,8 +1829,8 @@ void RegionFlowComputation::AdaptiveGoodFeaturesToTrack(
             }
 
             // Map corner pointer to x and y location.
-            const int offset = reinterpret_cast<const uint8*>(corner_ptr) -
-                               eig_image->ptr<const uint8>(0);
+            const int offset = reinterpret_cast<const uint8_t*>(corner_ptr) -
+                               eig_image->ptr<const uint8_t>(0);
 
             const int corner_y = offset / eig_image->step[0];
             const int corner_x =
@@ -1844,7 +1846,7 @@ void RegionFlowComputation::AdaptiveGoodFeaturesToTrack(
             const int mask_y = corner_y * mask_scale;
 
             // Test if neighboring element is already set.
-            if (mask->at<uint8>(mask_y, mask_x) >= 1) {
+            if (mask->at<uint8_t>(mask_y, mask_x) >= 1) {
               continue;
             }
 
@@ -2206,7 +2208,7 @@ void RegionFlowComputation::RemoveFeaturesOutsideMask(FrameTrackingData* data) {
   for (int k = data->features.size() - 1; k >= 0; --k) {
     const int x = static_cast<int>(data->features[k].x + 0.5);
     const int y = static_cast<int>(data->features[k].y + 0.5);
-    if (data->mask.at<uint8>(y, x) == 0) {
+    if (data->mask.at<uint8_t>(y, x) == 0) {
       data->RemoveFeature(k);
     }
   }
@@ -2286,9 +2288,9 @@ void RegionFlowComputation::ExtractFeatures(
   // Initialize mask from frame's feature extraction mask, by downsampling and
   // negating the latter mask.
   if (!data->mask.empty()) {
-    cv::resize(data->mask, mask, mask.size(), 0, 0, CV_INTER_NN);
+    cv::resize(data->mask, mask, mask.size(), 0, 0, cv::INTER_NEAREST);
     for (int y = 0; y < mask.rows; ++y) {
-      uint8* mask_ptr = mask.ptr<uint8>(y);
+      uint8_t* mask_ptr = mask.ptr<uint8_t>(y);
       for (int x = 0; x < mask.cols; ++x) {
         mask_ptr[x] = mask_ptr[x] == 0 ? 1 : 0;
       }
@@ -2401,7 +2403,7 @@ void RegionFlowComputation::ExtractFeatures(
       // to "join", without having to explicitly represent this.
       // Value of 2 improves number of connected features.
       constexpr int kMaxFeaturesPerBin = 1;
-      if (mask.at<uint8>(mask_y, mask_x) >= kMaxFeaturesPerBin) {
+      if (mask.at<uint8_t>(mask_y, mask_x) >= kMaxFeaturesPerBin) {
         data->actively_discarded_tracked_ids.push_back(track_id);
         continue;
       }
@@ -2577,7 +2579,7 @@ void RegionFlowComputation::TrackFeatures(FrameTrackingData* from_data_ptr,
                          input_mean, gain_image_.get());
   }
 
-#if CV_MAJOR_VERSION == 3
+#if CV_MAJOR_VERSION >= 3
   // OpenCV changed how window size gets specified from our radius setting
   // < 2.2 to diameter in 2.2+.
   const cv::Size cv_window_size(track_win_size * 2 + 1, track_win_size * 2 + 1);
@@ -2590,16 +2592,10 @@ void RegionFlowComputation::TrackFeatures(FrameTrackingData* from_data_ptr,
   cv::_InputArray input_frame2(data2.pyramid);
 #endif
 
-  // Using old c-interface for OpenCV's 2.2 tracker.
-  CvTermCriteria criteria;
-  criteria.type = CV_TERMCRIT_EPS | CV_TERMCRIT_ITER;
-  criteria.max_iter = options_.tracking_options().tracking_iterations();
-  criteria.epsilon = 0.02f;
-
   feature_track_error_.resize(num_features);
   feature_status_.resize(num_features);
   if (use_cv_tracking_) {
-#if CV_MAJOR_VERSION == 3
+#if CV_MAJOR_VERSION >= 3
     if (gain_correction) {
       if (!frame1_gain_reference) {
         input_frame1 = cv::_InputArray(*gain_image_);
@@ -2788,7 +2784,7 @@ void RegionFlowComputation::TrackFeatures(FrameTrackingData* from_data_ptr,
     feature_status_.resize(num_to_verify);
 
     if (use_cv_tracking_) {
-#if CV_MAJOR_VERSION == 3
+#if CV_MAJOR_VERSION >= 3
       cv::calcOpticalFlowPyrLK(input_frame2, input_frame1, verify_features,
                                verify_features_tracked, feature_status_,
                                verify_track_error, cv_window_size,

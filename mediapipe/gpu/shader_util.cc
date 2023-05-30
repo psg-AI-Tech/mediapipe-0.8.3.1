@@ -50,9 +50,8 @@ namespace mediapipe {
 
 constexpr int kMaxShaderInfoLength = 1024;
 
-GLint GlhCompileShader(GLenum target, const GLchar* source, GLuint* shader) {
-  GLint status;
-
+GLint GlhCompileShader(GLenum target, const GLchar* source, GLuint* shader,
+                       bool force_log_errors) {
   *shader = glCreateShader(target);
   if (*shader == 0) {
     return GL_FALSE;
@@ -61,6 +60,14 @@ GLint GlhCompileShader(GLenum target, const GLchar* source, GLuint* shader) {
   glCompileShader(*shader);
 
   GL_DEBUG_LOG(Shader, *shader, "compile");
+
+#if UNSAFE_EMSCRIPTEN_SKIP_GL_ERROR_HANDLING
+  if (!force_log_errors) {
+    return GL_TRUE;
+  }
+#endif  // UNSAFE_EMSCRIPTEN_SKIP_GL_ERROR_HANDLING
+
+  GLint status;
 
   glGetShaderiv(*shader, GL_COMPILE_STATUS, &status);
   LOG_IF(ERROR, status == GL_FALSE) << "Failed to compile shader:\n" << source;
@@ -74,10 +81,16 @@ GLint GlhCompileShader(GLenum target, const GLchar* source, GLuint* shader) {
   return status;
 }
 
-GLint GlhLinkProgram(GLuint program) {
-  GLint status;
-
+GLint GlhLinkProgram(GLuint program, bool force_log_errors) {
   glLinkProgram(program);
+
+#if UNSAFE_EMSCRIPTEN_SKIP_GL_ERROR_HANDLING
+  if (!force_log_errors) {
+    return GL_TRUE;
+  }
+#endif  // UNSAFE_EMSCRIPTEN_SKIP_GL_ERROR_HANDLING
+
+  GLint status;
 
   GL_DEBUG_LOG(Program, program, "link");
 
@@ -102,7 +115,8 @@ GLint GlhValidateProgram(GLuint program) {
 
 GLint GlhCreateProgram(const GLchar* vert_src, const GLchar* frag_src,
                        GLsizei attr_count, const GLchar* const* attr_names,
-                       const GLint* attr_locations, GLuint* program) {
+                       const GLint* attr_locations, GLuint* program,
+                       bool force_log_errors) {
   GLuint vert_shader = 0;
   GLuint frag_shader = 0;
   GLint ok = GL_TRUE;
@@ -112,8 +126,10 @@ GLint GlhCreateProgram(const GLchar* vert_src, const GLchar* frag_src,
     return GL_FALSE;
   }
 
-  ok = ok && GlhCompileShader(GL_VERTEX_SHADER, vert_src, &vert_shader);
-  ok = ok && GlhCompileShader(GL_FRAGMENT_SHADER, frag_src, &frag_shader);
+  ok = ok && GlhCompileShader(GL_VERTEX_SHADER, vert_src, &vert_shader,
+                              force_log_errors);
+  ok = ok && GlhCompileShader(GL_FRAGMENT_SHADER, frag_src, &frag_shader,
+                              force_log_errors);
 
   if (ok) {
     glAttachShader(*program, vert_shader);
@@ -124,7 +140,7 @@ GLint GlhCreateProgram(const GLchar* vert_src, const GLchar* frag_src,
       glBindAttribLocation(*program, attr_locations[i], attr_names[i]);
     }
 
-    ok = GlhLinkProgram(*program);
+    ok = GlhLinkProgram(*program, force_log_errors);
   }
 
   if (vert_shader) glDeleteShader(vert_shader);

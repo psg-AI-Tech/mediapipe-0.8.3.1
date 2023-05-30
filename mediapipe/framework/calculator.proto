@@ -212,6 +212,9 @@ message ProfilerConfig {
   // False specifies an event for each calculator invocation.
   // True specifies a separate event for each start and finish time.
   bool trace_log_instant_events = 17;
+
+  // Limits calculator-profile histograms to a subset of calculators.
+  string calculator_filter = 18;
 }
 
 // Describes the topology and function of a MediaPipe Graph.  The graph of
@@ -318,6 +321,8 @@ message CalculatorGraphConfig {
     // The maximum number of invocations that can be executed in parallel.
     // If not specified, the limit is one invocation.
     int32 max_in_flight = 16;
+    // Defines an option value for this Node from graph options or packets.
+    repeated string option_value = 17;
     // DEPRECATED: For backwards compatibility we allow users to
     // specify the old name for "input_side_packet" in proto configs.
     // These are automatically converted to input_side_packets during
@@ -342,7 +347,8 @@ message CalculatorGraphConfig {
   // PacketGenerators can take as a input side packet the output side
   // packet of another PacketGenerator.  The graph of PacketGenerators
   // must be a directed acyclic graph.
-  repeated PacketGeneratorConfig packet_generator = 7;
+  // DEPRECATED: Use a Node to generate side packets.
+  repeated PacketGeneratorConfig packet_generator = 7 [deprecated = true];
   // Number of threads for running calculators in multithreaded mode.
   // If not specified, the scheduler will pick an appropriate number
   // of threads depending on the number of available processors.
@@ -377,7 +383,7 @@ message CalculatorGraphConfig {
   // is empty and no other nodes are running (to prevent possible deadlocks due
   // to a incorrectly specified value). This global parameter is set to 100
   // packets by default to enable pipelining. If any node indicates that it
-  // buffers packets before emitting them, then the max(node_buffer_size,
+  // buffers packets before emitting them, then the max(buffer_size_hint,
   // max_queue_size) is used. Set this parameter to -1 to disable throttling
   // (i.e. the graph will use as much memory as it requires). If not specified,
   // the limit is 100 packets.
@@ -422,6 +428,9 @@ message CalculatorGraphConfig {
   // the graph config.
   string type = 20;
 
-  // Can be used for annotating a graph.
+  // The types and default values for graph options, in proto2 syntax.
   MediaPipeOptions options = 1001;
+
+  // The types and default values for graph options, in proto3 syntax.
+  repeated google.protobuf.Any graph_options = 1002;
 }

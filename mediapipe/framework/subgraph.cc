@@ -64,13 +64,13 @@ GraphRegistry::GraphRegistry(
 void GraphRegistry::Register(
     const std::string& type_name,
     std::function<std::unique_ptr<Subgraph>()> factory) {
-  local_factories_.Register(type_name, factory);
+  local_factories_.Register(type_name, factory, __FILE__, __LINE__);
 }
 
 // TODO: Remove this convenience function.
 void GraphRegistry::Register(const std::string& type_name,
                              const CalculatorGraphConfig& config) {
-  local_factories_.Register(type_name, [config] {
+  Register(type_name, [config] {
     auto result = absl::make_unique<ProtoSubgraph>(config);
     return std::unique_ptr<Subgraph>(result.release());
   });
@@ -79,7 +79,7 @@ void GraphRegistry::Register(const std::string& type_name,
 // TODO: Remove this convenience function.
 void GraphRegistry::Register(const std::string& type_name,
                              const CalculatorGraphTemplate& templ) {
-  local_factories_.Register(type_name, [templ] {
+  Register(type_name, [templ] {
     auto result = absl::make_unique<TemplateSubgraph>(templ);
     return std::unique_ptr<Subgraph>(result.release());
   });
@@ -92,18 +92,18 @@ bool GraphRegistry::IsRegistered(const std::string& ns,
 }
 
 absl::StatusOr<CalculatorGraphConfig> GraphRegistry::CreateByName(
-    const std::string& ns, const std::string& type_name,
-    const Subgraph::SubgraphOptions* options) const {
-  Subgraph::SubgraphOptions graph_options;
-  if (options) {
-    graph_options = *options;
-  }
+    absl::string_view ns, absl::string_view type_name,
+    SubgraphContext* context) const {
   absl::StatusOr<std::unique_ptr<Subgraph>> maker =
       local_factories_.IsRegistered(ns, type_name)
           ? local_factories_.Invoke(ns, type_name)
           : global_factories_->Invoke(ns, type_name);
   MP_RETURN_IF_ERROR(maker.status());
-  return maker.value()->GetConfig(graph_options);
+  if (context != nullptr) {
+    return maker.value()->GetConfig(context);
+  }
+  SubgraphContext default_context;
+  return maker.value()->GetConfig(&default_context);
 }
 
 }  // namespace mediapipe

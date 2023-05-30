@@ -13,21 +13,29 @@
 # limitations under the License.
 #
 
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//mediapipe/framework/port:build_config.bzl", "mediapipe_proto_library")
 load("//mediapipe/framework:mediapipe_register_type.bzl", "mediapipe_register_type")
 
 package(
-    default_visibility = ["//visibility:private"],
+    default_visibility = ["//visibility:public"],
     features = ["-layering_check"],
 )
 
 licenses(["notice"])
 
+selects.config_setting_group(
+    name = "ios_or_disable_gpu",
+    match_any = [
+        "//mediapipe/gpu:disable_gpu",
+        "//mediapipe:ios",
+    ],
+)
+
 mediapipe_proto_library(
     name = "detection_proto",
     srcs = ["detection.proto"],
-    visibility = ["//visibility:public"],
-    deps = ["//mediapipe/framework/formats:location_data_proto"],
+    deps = [":location_data_proto"],
 )
 
 mediapipe_register_type(
@@ -39,13 +47,12 @@ mediapipe_register_type(
         "::std::vector<::mediapipe::Detection>",
         "::std::vector<::mediapipe::DetectionList>",
     ],
-    deps = ["//mediapipe/framework/formats:detection_cc_proto"],
+    deps = [":detection_cc_proto"],
 )
 
 mediapipe_proto_library(
     name = "classification_proto",
     srcs = ["classification.proto"],
-    visibility = ["//visibility:public"],
 )
 
 mediapipe_register_type(
@@ -54,6 +61,7 @@ mediapipe_register_type(
     types = [
         "::mediapipe::Classification",
         "::mediapipe::ClassificationList",
+        "::mediapipe::ClassificationListCollection",
         "::std::vector<::mediapipe::Classification>",
         "::std::vector<::mediapipe::ClassificationList>",
     ],
@@ -63,40 +71,38 @@ mediapipe_register_type(
 mediapipe_proto_library(
     name = "image_format_proto",
     srcs = ["image_format.proto"],
-    visibility = ["//visibility:public"],
 )
 
 mediapipe_proto_library(
     name = "matrix_data_proto",
     srcs = ["matrix_data.proto"],
-    visibility = ["//visibility:public"],
 )
 
 mediapipe_proto_library(
     name = "location_data_proto",
     srcs = ["location_data.proto"],
-    portable_deps = ["//mediapipe/framework/formats/annotation:rasterization_cc_proto"],
-    visibility = ["//visibility:public"],
     deps = ["//mediapipe/framework/formats/annotation:rasterization_proto"],
+)
+
+mediapipe_proto_library(
+    name = "affine_transform_data_proto",
+    srcs = ["affine_transform_data.proto"],
 )
 
 mediapipe_proto_library(
     name = "time_series_header_proto",
     srcs = ["time_series_header.proto"],
-    visibility = ["//visibility:public"],
 )
 
 mediapipe_proto_library(
     name = "image_file_properties_proto",
     srcs = ["image_file_properties.proto"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "deleting_file",
     srcs = ["deleting_file.cc"],
     hdrs = ["deleting_file.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//mediapipe/framework/port:logging",
     ],
@@ -106,15 +112,36 @@ cc_library(
     name = "matrix",
     srcs = ["matrix.cc"],
     hdrs = ["matrix.h"],
-    visibility = ["//visibility:public"],
     deps = [
+        ":matrix_data_cc_proto",
         "//mediapipe/framework:port",
-        "//mediapipe/framework/formats:matrix_data_cc_proto",
         "//mediapipe/framework/port:core_proto",
         "//mediapipe/framework/port:logging",
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:status",
-        "@eigen_archive//:eigen",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
+    name = "affine_transform",
+    srcs = ["affine_transform.cc"],
+    hdrs = ["affine_transform.h"],
+    deps = [
+        ":affine_transform_data_cc_proto",
+        "//mediapipe/framework:port",
+        "//mediapipe/framework:type_map",
+        "//mediapipe/framework/port:integral_types",
+        "//mediapipe/framework/port:logging",
+        "//mediapipe/framework/port:point",
+        "//mediapipe/framework/port:ret_check",
+        "//mediapipe/framework/port:status",
+        "//mediapipe/framework/port:statusor",
+        "//mediapipe/framework/tool:status_util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -122,20 +149,19 @@ cc_library(
     name = "image_frame",
     srcs = ["image_frame.cc"],
     hdrs = ["image_frame.h"],
-    visibility = ["//visibility:public"],
     deps = [
-        "//mediapipe/framework/formats:image_format_cc_proto",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
+        ":image_format_cc_proto",
         "//mediapipe/framework:port",
         "//mediapipe/framework/port:aligned_malloc_and_free",
         "//mediapipe/framework/port:core_proto",
         "//mediapipe/framework/port:integral_types",
-        "//mediapipe/framework/port:source_location",
         "//mediapipe/framework/port:logging",
+        "//mediapipe/framework/port:source_location",
         "//mediapipe/framework/tool:type_util",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ] + select({
         "//conditions:default": [
         ],
@@ -147,33 +173,38 @@ cc_library(
     name = "image_frame_opencv",
     srcs = ["image_frame_opencv.cc"],
     hdrs = ["image_frame_opencv.h"],
-    visibility = ["//visibility:public"],
     deps = [
+        ":image_format_cc_proto",
         ":image_frame",
-        "//mediapipe/framework/formats:image_format_cc_proto",
         "//mediapipe/framework/port:opencv_core",
     ],
+)
+
+config_setting(
+    name = "opencv",
+    define_values = {
+        "use_opencv": "true",
+    },
+)
+
+config_setting(
+    name = "portable_opencv",
+    define_values = {
+        "use_portable_opencv": "true",
+        "use_opencv": "false",
+    },
 )
 
 cc_library(
     name = "location",
     srcs = ["location.cc"],
     hdrs = ["location.h"],
-    defines = select({
-        "//conditions:default": [],
-        "//mediapipe:android": ["MEDIAPIPE_ANDROID_OPENCV"],
-    }),
-    visibility = ["//visibility:public"],
     deps = [
-        "@com_google_protobuf//:protobuf",
-        "//mediapipe/framework/formats:location_data_cc_proto",
-        "//mediapipe/framework/formats/annotation:locus_cc_proto",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
+        ":location_data_cc_proto",
         "//mediapipe/framework:port",
         "//mediapipe/framework:type_map",
-        "//mediapipe/framework/tool:status_util",
+        "//mediapipe/framework/formats/annotation:locus_cc_proto",
+        "//mediapipe/framework/formats/annotation:rasterization_cc_proto",
         "//mediapipe/framework/port:integral_types",
         "//mediapipe/framework/port:logging",
         "//mediapipe/framework/port:point",
@@ -181,33 +212,54 @@ cc_library(
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:status",
         "//mediapipe/framework/port:statusor",
-        "//mediapipe/framework/formats/annotation:rasterization_cc_proto",
+        "//mediapipe/framework/tool:status_util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
     ] + select({
-        "//conditions:default": [
-            "//mediapipe/framework/port:opencv_imgproc",
-        ],
-    }) + select({
         "//conditions:default": [
         ],
         "//mediapipe:android": [],
-        "//mediapipe:apple": [],
+        "//mediapipe:ios": [],
     }),
     alwayslink = 1,
 )
 
 cc_library(
+    name = "location_opencv",
+    srcs = ["location_opencv.cc"],
+    hdrs = ["location_opencv.h"],
+    deps = [
+        ":location",
+        "//mediapipe/framework/formats/annotation:rasterization_cc_proto",
+        "//mediapipe/framework/port:opencv_imgproc",
+    ],
+    alwayslink = 1,
+)
+
+cc_test(
+    name = "location_opencv_test",
+    srcs = ["location_opencv_test.cc"],
+    deps = [
+        ":location_opencv",
+        "//mediapipe/framework/formats/annotation:rasterization_cc_proto",
+        "//mediapipe/framework/port:gtest_main",
+        "//mediapipe/framework/port:rectangle",
+    ],
+)
+
+cc_library(
     name = "video_stream_header",
     hdrs = ["video_stream_header.h"],
-    visibility = ["//visibility:public"],
     deps = [
-        "//mediapipe/framework/formats:image_format_cc_proto",
+        ":image_format_cc_proto",
     ],
 )
 
 cc_library(
     name = "yuv_image",
     hdrs = ["yuv_image.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//mediapipe/framework/port:integral_types",
         "@libyuv",
@@ -219,9 +271,9 @@ cc_test(
     size = "small",
     srcs = ["image_frame_opencv_test.cc"],
     deps = [
+        ":image_format_cc_proto",
         ":image_frame",
         ":image_frame_opencv",
-        "//mediapipe/framework/formats:image_format_cc_proto",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:integral_types",
         "//mediapipe/framework/port:logging",
@@ -231,8 +283,6 @@ cc_test(
 mediapipe_proto_library(
     name = "rect_proto",
     srcs = ["rect.proto"],
-    visibility = ["//visibility:public"],
-    deps = ["//mediapipe/framework/formats:location_data_proto"],
 )
 
 mediapipe_register_type(
@@ -250,9 +300,6 @@ mediapipe_register_type(
 mediapipe_proto_library(
     name = "landmark_proto",
     srcs = ["landmark.proto"],
-    visibility = [
-        "//visibility:public",
-    ],
 )
 
 mediapipe_register_type(
@@ -260,20 +307,17 @@ mediapipe_register_type(
     include_headers = ["mediapipe/framework/formats/landmark.pb.h"],
     types = [
         "::mediapipe::Landmark",
+        "::mediapipe::LandmarkList",
+        "::mediapipe::LandmarkListCollection",
         "::mediapipe::NormalizedLandmark",
         "::mediapipe::NormalizedLandmarkList",
+        "::mediapipe::NormalizedLandmarkListCollection",
         "::std::vector<::mediapipe::Landmark>",
+        "::std::vector<::mediapipe::LandmarkList>",
         "::std::vector<::mediapipe::NormalizedLandmark>",
         "::std::vector<::mediapipe::NormalizedLandmarkList>",
     ],
     deps = [":landmark_cc_proto"],
-)
-
-# Expose the proto source files for building mediapipe AAR.
-filegroup(
-    name = "protos_src",
-    srcs = glob(["*.proto"]),
-    visibility = ["//mediapipe:__subpackages__"],
 )
 
 cc_library(
@@ -287,24 +331,20 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-    visibility = ["//visibility:public"],
     deps = [
-        "//mediapipe/framework/formats:image_frame",
-        "//mediapipe/framework/formats:image_format_cc_proto",
-        "@com_google_absl//absl/synchronization",
+        ":image_format_cc_proto",
+        ":image_frame",
         "//mediapipe/framework:port",
+        "//mediapipe/framework:type_map",
         "//mediapipe/framework/port:logging",
+        "//mediapipe/gpu:gpu_buffer",
+        "//mediapipe/gpu:gpu_buffer_format",
+        "@com_google_absl//absl/synchronization",
     ] + select({
         "//conditions:default": [
-            "//mediapipe/gpu:gpu_buffer",
-            "//mediapipe/gpu:gpu_buffer_format",
             "//mediapipe/gpu:gl_texture_buffer",
         ],
-        "//mediapipe:ios": [
-            "//mediapipe/gpu:gpu_buffer",
-            "//mediapipe/gpu:gpu_buffer_format",
-        ],
-        "//mediapipe/gpu:disable_gpu": [],
+        "ios_or_disable_gpu": [],
     }) + select({
         "//conditions:default": [],
         "//mediapipe:apple": [
@@ -318,19 +358,18 @@ cc_library(
     name = "image_multi_pool",
     srcs = ["image_multi_pool.cc"],
     hdrs = ["image_multi_pool.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":image",
-        "//mediapipe/framework/formats:image_frame_pool",
+        ":image_frame_pool",
         "//mediapipe/framework:port",
         "//mediapipe/framework/port:logging",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
     ] + select({
         "//conditions:default": [
+            "//mediapipe/gpu:gl_base",
             "//mediapipe/gpu:gl_texture_buffer",
             "//mediapipe/gpu:gl_texture_buffer_pool",
-            "//mediapipe/gpu:gl_base",
             "//mediapipe/gpu:gpu_buffer",
         ],
         "//mediapipe:ios": [
@@ -355,10 +394,9 @@ cc_library(
     hdrs = [
         "image_opencv.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":image",
-        "//mediapipe/framework/formats:image_format_cc_proto",
+        ":image_format_cc_proto",
         "//mediapipe/framework/port:logging",
         "//mediapipe/framework/port:opencv_core",
         "//mediapipe/framework/port:statusor",
@@ -369,7 +407,6 @@ cc_library(
     name = "image_frame_pool",
     srcs = ["image_frame_pool.cc"],
     hdrs = ["image_frame_pool.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":image_frame",
         "@com_google_absl//absl/memory",
@@ -392,13 +429,27 @@ cc_test(
 
 cc_library(
     name = "tensor",
-    srcs = ["tensor.cc"],
-    hdrs = ["tensor.h"],
+    srcs =
+        [
+            "tensor.cc",
+            "tensor_ahwb.cc",
+        ],
+    hdrs = [
+        "tensor.h",
+        "//mediapipe/framework/formats/tensor:internal.h",
+    ] + select({
+        "//mediapipe:ios": ["tensor_mtl_buffer_view.h"],
+        "//conditions:default": [],
+    }),
     copts = select({
         "//mediapipe:apple": [
             "-x objective-c++",
             "-fobjc-arc",  # enable reference-counting
         ],
+        "//conditions:default": [],
+    }),
+    defines = select({
+        "//mediapipe/framework:android_no_jni": ["MEDIAPIPE_NO_JNI"],
         "//conditions:default": [],
     }),
     linkopts = select({
@@ -407,13 +458,17 @@ cc_library(
             "-framework MetalKit",
         ],
         "//conditions:default": [],
+        "//mediapipe/framework:android_no_jni": [],
+        "//mediapipe:android": [
+            "-landroid",
+        ],
     }),
-    visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/synchronization",
         "//mediapipe/framework:port",
         "//mediapipe/framework/port:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
     ] + select({
         "//mediapipe/gpu:disable_gpu": [],
         "//conditions:default": [
@@ -436,4 +491,16 @@ cc_test(
         ],
         "//mediapipe/gpu:disable_gpu": [],
     }),
+)
+
+cc_library(
+    name = "frame_buffer",
+    srcs = ["frame_buffer.cc"],
+    hdrs = ["frame_buffer.h"],
+    deps = [
+        "//mediapipe/framework/port:integral_types",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )

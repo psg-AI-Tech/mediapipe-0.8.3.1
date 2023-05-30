@@ -27,9 +27,9 @@
 #include "mediapipe/framework/calculator_framework.h"
 #if !MEDIAPIPE_DISABLE_GPU
 #include "mediapipe/gpu/gl_calculator_helper.h"
+#include "mediapipe/gpu/gpu_shared_data_internal.h"
 #endif  // !MEDIAPIPE_DISABLE_GPU
 #include "absl/synchronization/mutex.h"
-#include "mediapipe/gpu/gpu_shared_data_internal.h"
 
 namespace mediapipe {
 namespace android {
@@ -51,6 +51,10 @@ class Graph {
   // Adds a callback for a given stream name.
   absl::Status AddCallbackHandler(std::string output_stream_name,
                                   jobject java_callback);
+  // Adds a callback for multiple output streams.
+  absl::Status AddMultiStreamCallbackHandler(
+      std::vector<std::string> output_stream_names, jobject java_callback,
+      bool observe_timestamp_bounds);
 
   // Loads a binary graph from a file.
   absl::Status LoadBinaryGraph(std::string path_to_graph);
@@ -115,11 +119,11 @@ class Graph {
   // Puts a mediapipe packet into the context for management.
   // Returns the handle to the internal PacketWithContext object.
   int64_t WrapPacketIntoContext(const Packet& packet);
-
+#if !MEDIAPIPE_DISABLE_GPU
   // Gets the shared mediapipe::GpuResources. Only valid once the graph is
   // running.
   mediapipe::GpuResources* GetGpuResources() const;
-
+#endif  // !MEDIAPIPE_DISABLE_GPU
   // Adds a surface output for a given stream name.
   // Multiple outputs can be attached to the same stream.
   // Returns a native packet handle for the mediapipe::EglSurfaceHolder, or 0 in
@@ -157,6 +161,10 @@ class Graph {
   // Invokes a Java packet callback with header.
   void CallbackToJava(JNIEnv* env, jobject java_callback_obj,
                       const Packet& packet, const Packet& header_packet);
+
+  // Invokes a Java packet list callback.
+  void CallbackToJava(JNIEnv* env, jobject java_callback_obj,
+                      const std::vector<Packet>& packets);
 
   ProfilingContext* GetProfilingContext();
 
@@ -204,12 +212,13 @@ class Graph {
   // All callback handlers managed by the context.
   std::vector<std::unique_ptr<internal::CallbackHandler>> callback_handlers_;
 
+#if !MEDIAPIPE_DISABLE_GPU
   // mediapipe::GpuResources used by the graph.
   // Note: this class does not create a CalculatorGraph until StartRunningGraph
   // is called, and we may have to create the mediapipe::GpuResources before
   // that time, e.g. before a SurfaceOutput is associated with a Surface.
   std::shared_ptr<mediapipe::GpuResources> gpu_resources_;
-
+#endif  // !MEDIAPIPE_DISABLE_GPU
   // Maps surface output names to the side packet used for the associated
   // surface.
   std::unordered_map<std::string, Packet> output_surface_side_packets_;

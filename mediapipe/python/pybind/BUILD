@@ -1,4 +1,4 @@
-# Copyright 2020 The MediaPipe Authors.
+# Copyright 2020-2021 The MediaPipe Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ load("@pybind11_bazel//:build_defs.bzl", "pybind_library")
 
 licenses(["notice"])
 
-package(default_visibility = ["//mediapipe/python:__subpackages__"])
+package(default_visibility = ["//mediapipe:__subpackages__"])
 
 pybind_library(
     name = "calculator_graph",
@@ -37,6 +37,20 @@ pybind_library(
 )
 
 pybind_library(
+    name = "image",
+    srcs = ["image.cc"],
+    hdrs = ["image.h"],
+    deps = [
+        ":image_frame_util",
+        ":util",
+        "//mediapipe/framework:type_map",
+        "//mediapipe/framework/formats:image",
+        "@com_google_absl//absl/strings:str_format",
+        "@stblib//:stb_image",
+    ],
+)
+
+pybind_library(
     name = "image_frame",
     srcs = ["image_frame.cc"],
     hdrs = ["image_frame.h"],
@@ -51,6 +65,7 @@ pybind_library(
     name = "image_frame_util",
     hdrs = ["image_frame_util.h"],
     deps = [
+        ":util",
         "//mediapipe/framework/formats:image_format_cc_proto",
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/port:logging",
@@ -88,6 +103,7 @@ pybind_library(
         ":util",
         "//mediapipe/framework:packet",
         "//mediapipe/framework:timestamp",
+        "//mediapipe/framework/formats:image",
         "//mediapipe/framework/formats:matrix",
         "//mediapipe/framework/port:integral_types",
         "@com_google_absl//absl/memory",
@@ -104,8 +120,10 @@ pybind_library(
         ":util",
         "//mediapipe/framework:packet",
         "//mediapipe/framework:timestamp",
+        "//mediapipe/framework/formats:image",
         "//mediapipe/framework/formats:matrix",
         "//mediapipe/framework/port:integral_types",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 

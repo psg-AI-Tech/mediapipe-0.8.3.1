@@ -1,5 +1,6 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/
 title: Tracing and Profiling
 parent: Tools
 nav_order: 2
@@ -11,6 +12,12 @@ nav_order: 2
 1. TOC
 {:toc}
 ---
+
+**Attention:** *Thanks for your interest in MediaPipe! We have moved to
+[https://developers.google.com/mediapipe](https://developers.google.com/mediapipe)
+as the primary developer documentation site for MediaPipe as of April 3, 2023.*
+
+----
 
 The MediaPipe framework includes a built-in tracer and profiler. The tracer
 records various timing events related to packet processing, including the start
@@ -41,6 +48,7 @@ profiler_config {
   trace_enabled: true
   enable_profiler: true
   trace_log_interval_count: 200
+  trace_log_path: "/sdcard/Download/"
 }
 ```
 
@@ -64,12 +72,12 @@ MediaPipe will emit data into a pre-specified directory:
 
 *   On the desktop, this will be the `/tmp` directory.
 
-*   On Android, this will be the `/sdcard` directory.
+*   On Android, this will be the external storage directory (e.g., `/storage/emulated/0/`).
 
 *   On iOS, this can be reached through XCode. Select "Window/Devices and
     Simulators" and select the "Devices" tab.
 
-    ![Windows Select Devices](../images/visualizer/ios_window_devices.png)
+    ![Windows Select Devices](https://mediapipe.dev/images/visualizer/ios_window_devices.png)
 
     You can open the Download Container. Logs will be located in `application
     container/.xcappdata/AppData/Documents/`
@@ -77,7 +85,7 @@ MediaPipe will emit data into a pre-specified directory:
     right click and select 'Show Package Contents' in Finder. Logs
     will be located in 'AppData/Documents/'
 
-    ![Windows Download Container](../images/visualizer/ios_download_container.png)
+    ![Windows Download Container](https://mediapipe.dev/images/visualizer/ios_download_container.png)
 
 Log files are written to `\<trace_log_path index\>.binarypb` where, by default,
 `\<trace_log_path\>` is equal to `mediapipe_trace_` (the entire path and file
@@ -103,7 +111,7 @@ we record ten intervals of half a second each. This can be overridden by adding
     *   Include the line below in your `AndroidManifest.xml` file.
 
         ```xml
-        <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+        <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
         ```
 
     *   Grant the permission either upon first app launch, or by going into
@@ -130,8 +138,8 @@ we record ten intervals of half a second each. This can be overridden by adding
     events to a trace log files at:
 
     ```bash
-    /sdcard/mediapipe_trace_0.binarypb
-    /sdcard/mediapipe_trace_1.binarypb
+    /storage/emulated/0/Download/mediapipe_trace_0.binarypb
+    /storage/emulated/0/Download/mediapipe_trace_1.binarypb
     ```
 
     After every 5 sec, writing shifts to a successive trace log file, such that
@@ -139,10 +147,10 @@ we record ten intervals of half a second each. This can be overridden by adding
     trace files have been written to the device using adb shell.
 
     ```bash
-    adb shell "ls -la /sdcard/"
+    adb shell "ls -la /storage/emulated/0/Download"
     ```
 
-    On android, MediaPipe selects the external storage directory `/sdcard` for
+    On android, MediaPipe selects the external storage (e.g., `/storage/emulated/0/`) for
     trace logs. This directory can be overridden using the setting
     `trace_log_path`, like:
 
@@ -150,7 +158,7 @@ we record ten intervals of half a second each. This can be overridden by adding
     profiler_config {
       trace_enabled: true
       enable_profiler: true
-      trace_log_path: "/sdcard/profiles/"
+      trace_log_path: "/sdcard/Download/profiles/"
     }
     ```
 
@@ -161,7 +169,7 @@ we record ten intervals of half a second each. This can be overridden by adding
 
     ```bash
     # from your terminal
-    adb pull /sdcard/mediapipe_trace_0.binarypb
+    adb pull /storage/emulated/0/Download/mediapipe_trace_0.binarypb
     # if successful you should see something like
     # /sdcard/mediapipe_trace_0.binarypb: 1 file pulled. 0.1 MB/s (6766 bytes in 0.045s)
     ```
@@ -175,11 +183,11 @@ Trace logs can be analyzed from within the visualizer.
 
 2.  Click on the "Upload" button in the upper right.
 
-    ![Click on Upload](../images/visualizer/viz_click_upload.png)
+    ![Click on Upload](https://mediapipe.dev/images/visualizer/viz_click_upload.png)
 
 3.  Click on "Upload trace file".
 
-    ![Click on Upload](../images/visualizer/viz_click_upload_trace_file.png)
+    ![Click on Upload](https://mediapipe.dev/images/visualizer/viz_click_upload_trace_file.png)
 
     A sample trace file has been generated for you:
     [sample_trace_binary.pb](../data/visualizer/sample_trace.binarypb)
@@ -190,7 +198,7 @@ Trace logs can be analyzed from within the visualizer.
 5.  A chart view will appear. All of your calculators will appear along the left
     with profiling information listed along the top.
 
-    ![Click on Upload](../images/visualizer/viz_chart_view.png)
+    ![Click on Upload](https://mediapipe.dev/images/visualizer/viz_chart_view.png)
 
     Click on a header to alternately sort that column in ascending or descending
     order. You can also scroll horizontally and vertically within the control to
@@ -257,13 +265,14 @@ Many of the following settings are advanced and not recommended for general
 usage. Consult [Enabling tracing and profiling](#enabling-tracing-and-profiling)
 for a friendlier introduction.
 
-histogram_interval_size_usec :Specifies the size of the runtimes histogram
-intervals (in microseconds) to generate the histogram of the Process() time. The
-last interval extends to +inf. If not specified, the interval is 1000000 usec =
-1 sec.
+histogram_interval_size_usec
+:   Specifies the size of the runtimes histogram intervals (in microseconds) to
+    generate the histogram of the `Process()` time. The last interval extends to
+    +inf. If not specified, the interval is 1000000 usec = 1 sec.
 
-num_histogram_intervals :Specifies the number of intervals to generate the
-histogram of the `Process()` runtime. If not specified, one interval is used.
+num_histogram_intervals
+:   Specifies the number of intervals to generate the histogram of the
+    `Process()` runtime. If not specified, one interval is used.
 
 enable_profiler
 :   If true, the profiler starts profiling when graph is initialized.
@@ -287,7 +296,7 @@ trace_event_types_disabled
 
 trace_log_path
 :   The output directory and base-name prefix for trace log files. Log files are
-    written to: StrCat(trace_log_path, index, "`.binarypb`")
+    written to: `StrCat(trace_log_path, index, ".binarypb")`
 
 trace_log_count
 :   The number of trace log files retained. The trace log files are named
@@ -309,8 +318,8 @@ trace_log_instant_events
 
 trace_log_interval_count
 :   The number of trace log intervals per file. The total log duration is:
-    `trace_log_interval_usec * trace_log_file_count * trace_log_interval_count`.
-    The default value specifies 10 intervals per file.
+    `trace_log_interval_usec * trace_log_count * trace_log_interval_count`. The
+    default value specifies 10 intervals per file.
 
 trace_log_disabled
 :   An option to turn ON/OFF writing trace files to disk. Saving trace files to

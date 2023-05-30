@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "mediapipe/calculators/core/packet_resampler_calculator.pb.h"
 #include "mediapipe/calculators/tensorflow/unpack_media_sequence_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/location.h"
-#include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/framework/port/status.h"
 #include "mediapipe/util/audio_decoder.pb.h"
 #include "mediapipe/util/sequence/media_sequence.h"
@@ -190,64 +190,74 @@ class UnpackMediaSequenceCalculator : public CalculatorBase {
     // Copy the packet to copy the otherwise inaccessible shared ptr.
     example_packet_holder_ = cc->InputSidePackets().Tag(kSequenceExampleTag);
     sequence_ = &example_packet_holder_.Get<tf::SequenceExample>();
+    const auto& options = cc->Options<UnpackMediaSequenceCalculatorOptions>();
 
     // Collect the timestamps for all streams keyed by the timestamp feature's
     // key. While creating this data structure we also identify the last
     // timestamp and the associated feature. This information is used in process
     // to output batches of packets in order.
     timestamps_.clear();
-    int64 last_timestamp_seen = Timestamp::PreStream().Value();
+    int64_t last_timestamp_seen = Timestamp::PreStream().Value();
     first_timestamp_seen_ = Timestamp::OneOverPostStream().Value();
     for (const auto& map_kv : sequence_->feature_lists().feature_list()) {
       if (absl::StrContains(map_kv.first, "/timestamp")) {
         LOG(INFO) << "Found feature timestamps: " << map_kv.first
                   << " with size: " << map_kv.second.feature_size();
-        int64 recent_timestamp = Timestamp::PreStream().Value();
+        int64_t recent_timestamp = Timestamp::PreStream().Value();
         for (int i = 0; i < map_kv.second.feature_size(); ++i) {
-          int64 next_timestamp =
+          int64_t next_timestamp =
               mpms::GetInt64sAt(*sequence_, map_kv.first, i).Get(0);
           RET_CHECK_GT(next_timestamp, recent_timestamp)
               << "Timestamps must be sequential. If you're seeing this message "
               << "you may have added images to the same SequenceExample twice. "
               << "Key: " << map_kv.first;
+          if (options.output_poststream_as_prestream() &&
+              next_timestamp == Timestamp::PostStream().Value()) {
+            RET_CHECK_EQ(i, 0)
+                << "Detected PostStream() and timestamps being output for the "
+                << "same stream. This is currently invalid.";
+            next_timestamp = Timestamp::PreStream().Value();
+          }
           timestamps_[map_kv.first].push_back(next_timestamp);
           recent_timestamp = next_timestamp;
           if (recent_timestamp < first_timestamp_seen_) {
             first_timestamp_seen_ = recent_timestamp;
           }
         }
-        if (recent_timestamp > last_timestamp_seen) {
+        if (recent_timestamp > last_timestamp_seen &&
+            recent_timestamp < Timestamp::PostStream().Value()) {
           last_timestamp_key_ = map_kv.first;
           last_timestamp_seen = recent_timestamp;
         }
       }
     }
     if (!timestamps_.empty()) {
-      RET_CHECK(!last_timestamp_key_.empty())
-          << "Something went wrong because the timestamp key is unset. "
-             "Example: "
-          << sequence_->DebugString();
-      RET_CHECK_GT(last_timestamp_seen, Timestamp::PreStream().Value())
-          << "Something went wrong because the last timestamp is unset. "
-             "Example: "
-          << sequence_->DebugString();
-      RET_CHECK_LT(first_timestamp_seen_,
-                   Timestamp::OneOverPostStream().Value())
-          << "Something went wrong because the first timestamp is unset. "
-             "Example: "
-          << sequence_->DebugString();
+      for (const auto& kv : timestamps_) {
+        if (!kv.second.empty() &&
+            kv.second[0] < Timestamp::PostStream().Value()) {
+          // These checks only make sense if any values are not PostStream, but
+          // only need to be made once.
+          RET_CHECK(!last_timestamp_key_.empty())
+              << "Something went wrong because the timestamp key is unset. "
+              << "Example: " << sequence_->DebugString();
+          RET_CHECK_GT(last_timestamp_seen, Timestamp::PreStream().Value())
+              << "Something went wrong because the last timestamp is unset. "
+              << "Example: " << sequence_->DebugString();
+          RET_CHECK_LT(first_timestamp_seen_,
+                       Timestamp::OneOverPostStream().Value())
+              << "Something went wrong because the first timestamp is unset. "
+              << "Example: " << sequence_->DebugString();
+          break;
+        }
+      }
     }
     current_timestamp_index_ = 0;
+    process_poststream_ = false;
 
     // Determine the data path and output it.
-    const auto& options = cc->Options<UnpackMediaSequenceCalculatorOptions>();
     const auto& sequence = cc->InputSidePackets()
                                .Tag(kSequenceExampleTag)
                                .Get<tensorflow::SequenceExample>();
-    if (cc->Outputs().HasTag(kKeypointsTag)) {
-      keypoint_names_ = absl::StrSplit(options.keypoint_names(), ',');
-      default_keypoint_location_ = options.default_keypoint_location();
-    }
     if (cc->OutputSidePackets().HasTag(kDataPath)) {
       std::string root_directory = "";
       if (cc->InputSidePackets().HasTag(kDatasetRootDirTag)) {
@@ -348,27 +358,42 @@ class UnpackMediaSequenceCalculator : public CalculatorBase {
     // all packets on all streams that have a timestamp between the current
     // reference timestep and the previous reference timestep. This ensures that
     // we emit all timestamps in order, but also only emit a limited number in
-    // any particular call to Process().
-    int64 start_timestamp =
-        timestamps_[last_timestamp_key_][current_timestamp_index_];
-    if (current_timestamp_index_ == 0) {
-      start_timestamp = first_timestamp_seen_;
+    // any particular call to Process(). At the every end, we output the
+    // poststream packets. If we only have poststream packets,
+    // last_timestamp_key_ will be empty.
+    int64_t start_timestamp = 0;
+    int64_t end_timestamp = 0;
+    if (last_timestamp_key_.empty() || process_poststream_) {
+      process_poststream_ = true;
+      start_timestamp = Timestamp::PostStream().Value();
+      end_timestamp = Timestamp::OneOverPostStream().Value();
+    } else {
+      start_timestamp =
+          timestamps_[last_timestamp_key_][current_timestamp_index_];
+      if (current_timestamp_index_ == 0) {
+        start_timestamp = first_timestamp_seen_;
+      }
+
+      end_timestamp = start_timestamp + 1;  // Base case at end of sequence.
+      if (current_timestamp_index_ <
+          timestamps_[last_timestamp_key_].size() - 1) {
+        end_timestamp =
+            timestamps_[last_timestamp_key_][current_timestamp_index_ + 1];
+      }
     }
 
-    int64 end_timestamp = start_timestamp + 1;  // Base case at end of sequence.
-    if (current_timestamp_index_ <
-        timestamps_[last_timestamp_key_].size() - 1) {
-      end_timestamp =
-          timestamps_[last_timestamp_key_][current_timestamp_index_ + 1];
-    }
     for (const auto& map_kv : timestamps_) {
       for (int i = 0; i < map_kv.second.size(); ++i) {
         if (map_kv.second[i] >= start_timestamp &&
             map_kv.second[i] < end_timestamp) {
-          const Timestamp current_timestamp =
-              map_kv.second[i] == Timestamp::PostStream().Value()
-                  ? Timestamp::PostStream()
-                  : Timestamp(map_kv.second[i]);
+          Timestamp current_timestamp;
+          if (map_kv.second[i] == Timestamp::PostStream().Value()) {
+            current_timestamp = Timestamp::PostStream();
+          } else if (map_kv.second[i] == Timestamp::PreStream().Value()) {
+            current_timestamp = Timestamp::PreStream();
+          } else {
+            current_timestamp = Timestamp(map_kv.second[i]);
+          }
 
           if (absl::StrContains(map_kv.first, mpms::GetImageTimestampKey())) {
             std::vector<std::string> pieces = absl::StrSplit(map_kv.first, '/');
@@ -437,7 +462,14 @@ class UnpackMediaSequenceCalculator : public CalculatorBase {
     if (current_timestamp_index_ < timestamps_[last_timestamp_key_].size()) {
       return absl::OkStatus();
     } else {
-      return tool::StatusStop();
+      if (process_poststream_) {
+        // Once we've processed the PostStream timestamp we can stop.
+        return tool::StatusStop();
+      } else {
+        // Otherwise, we still need to do one more pass to process it.
+        process_poststream_ = true;
+        return absl::OkStatus();
+      }
     }
   }
 
@@ -449,18 +481,19 @@ class UnpackMediaSequenceCalculator : public CalculatorBase {
   // Store a map from the keys for each stream to the timestamps for each
   // key. This allows us to identify which packets to output for each stream
   // for timestamps within a given time window.
-  std::map<std::string, std::vector<int64>> timestamps_;
+  std::map<std::string, std::vector<int64_t>> timestamps_;
   // Store the stream with the latest timestamp in the SequenceExample.
   std::string last_timestamp_key_;
   // Store the index of the current timestamp. Will be less than
   // timestamps_[last_timestamp_key_].size().
   int current_timestamp_index_;
   // Store the very first timestamp, so we output everything on the first frame.
-  int64 first_timestamp_seen_;
+  int64_t first_timestamp_seen_;
   // List of keypoint names.
   std::vector<std::string> keypoint_names_;
   // Default keypoint location when missing.
   float default_keypoint_location_;
+  bool process_poststream_;
 };
 REGISTER_CALCULATOR(UnpackMediaSequenceCalculator);
 }  // namespace mediapipe

@@ -1,4 +1,4 @@
-load("//mediapipe/framework/port:build_config.bzl", "mediapipe_cc_proto_library")
+load("//mediapipe/framework/port:build_config.bzl", "mediapipe_proto_library")
 
 # Copyright 2019 The MediaPipe Authors.
 #
@@ -16,28 +16,25 @@ load("//mediapipe/framework/port:build_config.bzl", "mediapipe_cc_proto_library"
 
 licenses(["notice"])
 
-package(default_visibility = ["//mediapipe/examples:__subpackages__"])
+package(default_visibility = [
+    "//mediapipe/examples:__subpackages__",
+    "//photos/editing/mobile/mediapipe/calculators:__subpackages__",
+    "//photos/editing/mobile/mediapipe/proto:__subpackages__",
+])
 
-proto_library(
+mediapipe_proto_library(
     name = "autoflip_messages_proto",
     srcs = ["autoflip_messages.proto"],
     deps = [
-        "//mediapipe/framework:calculator_proto",
+        "//mediapipe/framework:calculator_options_proto",
     ],
-)
-
-mediapipe_cc_proto_library(
-    name = "autoflip_messages_cc_proto",
-    srcs = ["autoflip_messages.proto"],
-    cc_deps = ["//mediapipe/framework:calculator_cc_proto"],
-    visibility = [
-        "//mediapipe/examples:__subpackages__",
-    ],
-    deps = [":autoflip_messages_proto"],
 )
 
 cc_binary(
     name = "run_autoflip",
+    data = [
+        "//mediapipe/modules/face_detection:face_detection_full_range_sparse.tflite",
+    ],
     deps = [
         "//mediapipe/calculators/core:packet_thinner_calculator",
         "//mediapipe/calculators/image:scale_image_calculator",

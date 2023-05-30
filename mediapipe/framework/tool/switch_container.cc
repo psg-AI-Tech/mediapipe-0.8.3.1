@@ -12,18 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <fstream>
-#include <iostream>
-#include <sstream>
+#include <functional>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
-#include "mediapipe/framework/mediapipe_options.pb.h"
+#include "mediapipe/framework/calculator_options.pb.h"
 #include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/stream_handler.pb.h"
-#include "mediapipe/framework/stream_handler/sync_set_input_stream_handler.pb.h"
 #include "mediapipe/framework/tool/container_util.h"
 #include "mediapipe/framework/tool/name_util.h"
 #include "mediapipe/framework/tool/subgraph_expansion.h"
@@ -59,6 +62,11 @@ using mediapipe::SwitchContainerOptions;
 // or contained_node 1, given "ENABLE:false" or "ENABLE:true" respectively.
 // Input-side-packet "ENABLE" and input-stream "SELECT" can also be used
 // similarly to specify the active channel.
+//
+// Note that this container defaults to use ImmediateInputStreamHandler,
+// which can be used to accept infrequent "enable" packets asynchronously.
+// However, it can be overridden to work with DefaultInputStreamHandler,
+// which can be used to accept frequent "enable" packets synchronously.
 class SwitchContainer : public Subgraph {
  public:
   SwitchContainer() = default;
@@ -79,6 +87,7 @@ std::string ChannelName(const std::string& name, int channel) {
 // Returns a SwitchDemuxCalculator node.
 CalculatorGraphConfig::Node* BuildDemuxNode(
     const std::map<TagIndex, std::string>& input_tags,
+    const CalculatorGraphConfig::Node& container_node,
     CalculatorGraphConfig* config) {
   CalculatorGraphConfig::Node* result = config->add_node();
   *result->mutable_calculator() = "SwitchDemuxCalculator";
@@ -92,6 +101,49 @@ CalculatorGraphConfig::Node* BuildMuxNode(
   CalculatorGraphConfig::Node* result = config->add_node();
   *result->mutable_calculator() = "SwitchMuxCalculator";
   return result;
+}
+
+// Returns a PacketSequencerCalculator node.
+CalculatorGraphConfig::Node* BuildTimestampNode(CalculatorGraphConfig* config,
+                                                bool async_selection) {
+  CalculatorGraphConfig::Node* result = config->add_node();
+  *result->mutable_calculator() = "PacketSequencerCalculator";
+  if (!async_selection) {
+    *result->mutable_input_stream_handler()->mutable_input_stream_handler() =
+        "DefaultInputStreamHandler";
+  }
+  return result;
+}
+
+// Copies options from one node to another.
+void CopyOptions(const CalculatorGraphConfig::Node& source,
+                 CalculatorGraphConfig::Node* dest) {
+  if (source.has_options()) {
+    *dest->mutable_options() = source.options();
+  }
+  *dest->mutable_node_options() = source.node_options();
+}
+
+// Clears options that are consumed by the container and not forwarded.
+void ClearContainerOptions(SwitchContainerOptions* result) {
+  result->clear_contained_node();
+}
+
+// Clears options that are consumed by the container and not forwarded.
+void ClearContainerOptions(CalculatorGraphConfig::Node* dest) {
+  if (dest->has_options() &&
+      dest->mutable_options()->HasExtension(SwitchContainerOptions::ext)) {
+    ClearContainerOptions(
+        dest->mutable_options()->MutableExtension(SwitchContainerOptions::ext));
+  }
+  for (google::protobuf::Any& a : *dest->mutable_node_options()) {
+    if (a.Is<SwitchContainerOptions>()) {
+      SwitchContainerOptions extension;
+      a.UnpackTo(&extension);
+      ClearContainerOptions(&extension);
+      a.PackFrom(extension);
+    }
+  }
 }
 
 // Returns an unused name similar to a specified name.
@@ -179,6 +231,23 @@ absl::Status ValidateContract(
   return absl::OkStatus();
 }
 
+// Returns true if a set of streams references a certain tag name.
+bool HasTag(const proto_ns::RepeatedPtrField<std::string>& streams,
+            std::string tag) {
+  std::map<TagIndex, std::string> tags;
+  ParseTags(streams, &tags);
+  return tags.count({tag, 0}) > 0;
+}
+
+// Returns true if a set of "TAG::index" includes a TagIndex.
+bool ContainsTag(const proto_ns::RepeatedPtrField<std::string>& tags,
+                 TagIndex item) {
+  for (const std::string& t : tags) {
+    if (ParseTagIndex(t) == item) return true;
+  }
+  return false;
+}
+
 absl::StatusOr<CalculatorGraphConfig> SwitchContainer::GetConfig(
     const Subgraph::SubgraphOptions& options) {
   CalculatorGraphConfig config;
@@ -197,16 +266,42 @@ absl::StatusOr<CalculatorGraphConfig> SwitchContainer::GetConfig(
   ParseTags(container_streams.input_side_packet(), &side_input_tags);
   ParseTags(container_streams.output_side_packet(), &side_output_tags);
 
+  CalculatorGraphConfig::Node* select_node = nullptr;
+  CalculatorGraphConfig::Node* enable_node = nullptr;
+  std::string select_stream = "SELECT:gate_select";
+  std::string enable_stream = "ENABLE:gate_enable";
+
+  // Add a PacketSequencerCalculator node for "SELECT" or "ENABLE" streams.
+  const auto& switch_options =
+      Subgraph::GetOptions<mediapipe::SwitchContainerOptions>(options);
+  bool async_selection = switch_options.async_selection();
+  if (HasTag(container_node.input_stream(), "SELECT")) {
+    select_node = BuildTimestampNode(&config, async_selection);
+    select_node->add_input_stream("INPUT:gate_select");
+    select_node->add_output_stream("OUTPUT:gate_select_timed");
+    select_stream = "SELECT:gate_select_timed";
+  }
+  if (HasTag(container_node.input_stream(), "ENABLE")) {
+    enable_node = BuildTimestampNode(&config, async_selection);
+    enable_node->add_input_stream("INPUT:gate_enable");
+    enable_node->add_output_stream("OUTPUT:gate_enable_timed");
+    enable_stream = "ENABLE:gate_enable_timed";
+  }
+
   // Add a graph node for the demux, mux.
-  auto demux = BuildDemuxNode(input_tags, &config);
-  demux->add_input_stream("SELECT:gate_select");
-  demux->add_input_stream("ENABLE:gate_enable");
+  auto demux = BuildDemuxNode(input_tags, container_node, &config);
+  CopyOptions(container_node, demux);
+  ClearContainerOptions(demux);
+  demux->add_input_stream(select_stream);
+  demux->add_input_stream(enable_stream);
   demux->add_input_side_packet("SELECT:gate_select");
   demux->add_input_side_packet("ENABLE:gate_enable");
 
   auto mux = BuildMuxNode(output_tags, &config);
-  mux->add_input_stream("SELECT:gate_select");
-  mux->add_input_stream("ENABLE:gate_enable");
+  CopyOptions(container_node, mux);
+  ClearContainerOptions(mux);
+  mux->add_input_stream(select_stream);
+  mux->add_input_stream(enable_stream);
   mux->add_input_side_packet("SELECT:gate_select");
   mux->add_input_side_packet("ENABLE:gate_enable");
 
@@ -215,10 +310,24 @@ absl::StatusOr<CalculatorGraphConfig> SwitchContainer::GetConfig(
   config.add_input_stream("ENABLE:gate_enable");
   config.add_input_side_packet("SELECT:gate_select");
   config.add_input_side_packet("ENABLE:gate_enable");
+  int tick_index = 0;
   for (const auto& p : input_tags) {
     std::string stream = CatStream(p.first, p.second);
     config.add_input_stream(stream);
     demux->add_input_stream(stream);
+  }
+
+  // Add input streams for the timestamper.
+  auto& tick_streams = switch_options.tick_input_stream();
+  for (const auto& p : input_tags) {
+    if (!tick_streams.empty() && !ContainsTag(tick_streams, p.first)) continue;
+    TagIndex tick_tag{"TICK", tick_index++};
+    if (select_node) {
+      select_node->add_input_stream(CatStream(tick_tag, p.second));
+    }
+    if (enable_node) {
+      enable_node->add_input_stream(CatStream(tick_tag, p.second));
+    }
   }
 
   // Add output streams for graph and mux.

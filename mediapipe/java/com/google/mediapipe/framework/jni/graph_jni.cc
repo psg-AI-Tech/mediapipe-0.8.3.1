@@ -15,6 +15,7 @@
 #include "mediapipe/java/com/google/mediapipe/framework/jni/graph_jni.h"
 
 #include <memory>
+#include <string>
 
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/canonical_errors.h"
@@ -23,6 +24,7 @@
 #include "mediapipe/java/com/google/mediapipe/framework/jni/graph.h"
 #include "mediapipe/java/com/google/mediapipe/framework/jni/jni_util.h"
 
+using mediapipe::android::JavaListToStdStringVector;
 using mediapipe::android::JStringToStdString;
 using mediapipe::android::ThrowIfError;
 
@@ -94,7 +96,7 @@ JNIEXPORT void JNICALL GRAPH_METHOD(nativeLoadBinaryGraph)(JNIEnv* env,
   mediapipe::android::Graph* mediapipe_graph =
       reinterpret_cast<mediapipe::android::Graph*>(context);
   const char* path_ref = env->GetStringUTFChars(path, nullptr);
-  // Make a copy of the std::string and release the jni reference.
+  // Make a copy of the string and release the jni reference.
   std::string path_to_graph(path_ref);
   env->ReleaseStringUTFChars(path, path_ref);
   ThrowIfError(env, mediapipe_graph->LoadBinaryGraph(path_to_graph));
@@ -131,7 +133,7 @@ JNIEXPORT void JNICALL GRAPH_METHOD(nativeSetGraphType)(JNIEnv* env,
   mediapipe::android::Graph* mediapipe_graph =
       reinterpret_cast<mediapipe::android::Graph*>(context);
   const char* graph_type_ref = env->GetStringUTFChars(graph_type, nullptr);
-  // Make a copy of the std::string and release the jni reference.
+  // Make a copy of the string and release the jni reference.
   std::string graph_type_string(graph_type_ref);
   env->ReleaseStringUTFChars(graph_type, graph_type_ref);
   ThrowIfError(env, mediapipe_graph->SetGraphType(graph_type_string));
@@ -185,6 +187,35 @@ GRAPH_METHOD(nativeAddPacketCallback)(JNIEnv* env, jobject thiz, jlong context,
   }
   ThrowIfError(env, mediapipe_graph->AddCallbackHandler(output_stream_name,
                                                         global_callback_ref));
+}
+
+JNIEXPORT void JNICALL GRAPH_METHOD(nativeAddMultiStreamCallback)(
+    JNIEnv* env, jobject thiz, jlong context, jobject stream_names,
+    jobject callback, jboolean observe_timestamp_bounds) {
+  mediapipe::android::Graph* mediapipe_graph =
+      reinterpret_cast<mediapipe::android::Graph*>(context);
+  std::vector<std::string> output_stream_names =
+      JavaListToStdStringVector(env, stream_names);
+  for (const std::string& s : output_stream_names) {
+    if (s.empty()) {
+      ThrowIfError(env,
+                   absl::InternalError("streamNames is not correctly parsed or "
+                                       "it contains empty string."));
+      return;
+    }
+  }
+
+  // Create a global reference to the callback object, so that it can
+  // be accessed later.
+  jobject global_callback_ref = env->NewGlobalRef(callback);
+  if (!global_callback_ref) {
+    ThrowIfError(env,
+                 absl::InternalError("Failed to allocate packets callback"));
+    return;
+  }
+  ThrowIfError(env, mediapipe_graph->AddMultiStreamCallbackHandler(
+                        output_stream_names, global_callback_ref,
+                        observe_timestamp_bounds));
 }
 
 JNIEXPORT jlong JNICALL GRAPH_METHOD(nativeAddSurfaceOutput)(

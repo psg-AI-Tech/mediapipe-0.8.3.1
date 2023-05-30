@@ -24,7 +24,7 @@ load(
 
 licenses(["notice"])
 
-MIN_IOS_VERSION = "10.0"
+MIN_IOS_VERSION = "11.0"
 
 alias(
     name = "facedetectioncpu",
@@ -55,7 +55,7 @@ objc_library(
     name = "FaceDetectionCpuAppLibrary",
     data = [
         "//mediapipe/graphs/face_detection:face_detection_mobile_cpu.binarypb",
-        "//mediapipe/modules/face_detection:face_detection_front.tflite",
+        "//mediapipe/modules/face_detection:face_detection_short_range.tflite",
     ],
     deps = [
         "//mediapipe/examples/ios/common:CommonMediaPipeAppLibrary",

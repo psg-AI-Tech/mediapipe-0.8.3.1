@@ -1,17 +1,42 @@
 ---
 layout: default
-title: Solutions
+title: MediaPipe Legacy Solutions
 nav_order: 3
 has_children: true
 has_toc: false
 ---
 
-# Solutions
+# MediaPipe Legacy Solutions
 {: .no_toc }
 
 1. TOC
 {:toc}
 ---
+
+**Attention:** *Thank you for your interest in MediaPipe Solutions. We have
+ended support for
+[these MediaPipe Legacy Solutions](https://developers.google.com/mediapipe/solutions/guide#legacy)
+as of March 1, 2023. All other
+[MediaPipe Legacy Solutions will be upgraded](https://developers.google.com/mediapipe/solutions/guide#legacy)
+to a new MediaPipe Solution. The
+[code repository](https://github.com/google/mediapipe/tree/master/mediapipe)
+and prebuilt binaries for all MediaPipe Legacy Solutions will continue to
+be provided on an as-is basis. We encourage you to check out the new MediaPipe
+Solutions at:
+[https://developers.google.com/mediapipe/solutions](https://developers.google.com/mediapipe/solutions)*
+
+*This notice and web page will be removed on June 1, 2023.*
+
+----
+
+<br><br><br><br><br><br><br><br><br><br>
+<br><br><br><br><br><br><br><br><br><br>
+<br><br><br><br><br><br><br><br><br><br>
+
+----
+
+MediaPipe offers open source cross-platform, customizable ML solutions for live
+and streaming media.
 
 <!-- []() in the first cell is needed to preserve table formatting in GitHub Pages. -->
 <!-- Whenever this table is updated, paste a copy to ../external_index.md. -->
@@ -24,11 +49,12 @@ has_toc: false
 [Hands](https://google.github.io/mediapipe/solutions/hands)                                     | ✅                                                               | ✅                                                       | ✅                                                       | ✅                                                             | ✅                                                             |
 [Pose](https://google.github.io/mediapipe/solutions/pose)                                       | ✅                                                               | ✅                                                       | ✅                                                       | ✅                                                             | ✅                                                             |
 [Holistic](https://google.github.io/mediapipe/solutions/holistic)                               | ✅                                                               | ✅                                                       | ✅                                                       | ✅                                                             | ✅                                                             |
+[Selfie Segmentation](https://google.github.io/mediapipe/solutions/selfie_segmentation)         | ✅                                                               | ✅                                                       | ✅                                                       | ✅                                                             | ✅                                                             |
 [Hair Segmentation](https://google.github.io/mediapipe/solutions/hair_segmentation)             | ✅                                                               |                                                         | ✅                                                       |                                                               |                                                               |
 [Object Detection](https://google.github.io/mediapipe/solutions/object_detection)               | ✅                                                               | ✅                                                       | ✅                                                       |                                                               |                                                               | ✅
 [Box Tracking](https://google.github.io/mediapipe/solutions/box_tracking)                       | ✅                                                               | ✅                                                       | ✅                                                       |                                                               |                                                               |
 [Instant Motion Tracking](https://google.github.io/mediapipe/solutions/instant_motion_tracking) | ✅                                                               |                                                         |                                                         |                                                               |                                                               |
-[Objectron](https://google.github.io/mediapipe/solutions/objectron)                             | ✅                                                               |                                                         |                                                         | ✅                                                             |                                                               |
+[Objectron](https://google.github.io/mediapipe/solutions/objectron)                             | ✅                                                               |                                                         | ✅                                                       | ✅                                                             | ✅                                                             |
 [KNIFT](https://google.github.io/mediapipe/solutions/knift)                                     | ✅                                                               |                                                         |                                                         |                                                               |                                                               |
 [AutoFlip](https://google.github.io/mediapipe/solutions/autoflip)                               |                                                                 |                                                         | ✅                                                       |                                                               |                                                               |
 [MediaSequence](https://google.github.io/mediapipe/solutions/media_sequence)                    |                                                                 |                                                         | ✅                                                       |                                                               |                                                               |

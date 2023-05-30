@@ -302,7 +302,7 @@ class Scheduler {
   // - We need it to be reentrant, which Mutex does not support.
   // - We want simultaneous calls to return immediately instead of waiting,
   //   and Mutex's TryLock is not guaranteed to work.
-  bool handling_idle_ ABSL_GUARDED_BY(state_mutex_) = false;
+  int handling_idle_ ABSL_GUARDED_BY(state_mutex_) = 0;
 
   // Mutex for the scheduler state and related things.
   // Note: state_ is declared as atomic so that its getter methods don't need
@@ -310,7 +310,7 @@ class Scheduler {
   absl::Mutex state_mutex_;
 
   // Current state of the scheduler.
-  std::atomic<State> state_ = ATOMIC_VAR_INIT(STATE_NOT_STARTED);
+  std::atomic<State> state_ = STATE_NOT_STARTED;
 
   // True if all graph input streams are closed.
   bool graph_input_streams_closed_ ABSL_GUARDED_BY(state_mutex_) = false;

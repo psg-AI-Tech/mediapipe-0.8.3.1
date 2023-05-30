@@ -1,8 +1,9 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/solutions/guide#legacy
 title: YouTube-8M Feature Extraction and Model Inference
-parent: Solutions
-nav_order: 15
+parent: MediaPipe Legacy Solutions
+nav_order: 16
 ---
 
 # YouTube-8M Feature Extraction and Model Inference
@@ -17,6 +18,14 @@ nav_order: 15
 {:toc}
 </details>
 ---
+
+**Attention:** *Thank you for your interest in MediaPipe Solutions.
+We have ended support for this MediaPipe Legacy Solution as of March 1, 2023.
+For more information, see the
+[MediaPipe Solutions](https://developers.google.com/mediapipe/solutions/guide#legacy)
+site.*
+
+----
 
 MediaPipe is a useful and general framework for media processing that can assist
 with research, development, and deployment of ML models. This example focuses on

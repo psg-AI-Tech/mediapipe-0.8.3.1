@@ -22,6 +22,7 @@
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/detection.pb.h"
 #include "mediapipe/framework/formats/location.h"
+#include "mediapipe/framework/formats/location_opencv.h"
 #include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/opencv_imgcodecs_inc.h"
 #include "mediapipe/framework/port/ret_check.h"
@@ -37,6 +38,8 @@ const char kSequenceExampleTag[] = "SEQUENCE_EXAMPLE";
 const char kImageTag[] = "IMAGE";
 const char kFloatContextFeaturePrefixTag[] = "FLOAT_CONTEXT_FEATURE_";
 const char kFloatFeaturePrefixTag[] = "FLOAT_FEATURE_";
+const char kIntFeaturePrefixTag[] = "INT_FEATURE_";
+const char kBytesFeaturePrefixTag[] = "BYTES_FEATURE_";
 const char kForwardFlowEncodedTag[] = "FORWARD_FLOW_ENCODED";
 const char kBBoxTag[] = "BBOX";
 const char kKeypointsTag[] = "KEYPOINTS";
@@ -58,7 +61,7 @@ namespace mpms = mediapipe::mediasequence;
 // bounding boxes from vector<Detections>, and streams with the
 // "FLOAT_FEATURE_${NAME}" pattern, which stores the values from vector<float>'s
 // associated with the name ${NAME}. "KEYPOINTS" stores a map of 2D keypoints
-// from flat_hash_map<std::string, vector<pair<float, float>>>. "IMAGE_${NAME}",
+// from flat_hash_map<string, vector<pair<float, float>>>. "IMAGE_${NAME}",
 // "BBOX_${NAME}", and "KEYPOINTS_${NAME}" will also store prefixed versions of
 // each stream, which allows for multiple image streams to be included. However,
 // the default names are suppored by more tools.
@@ -86,9 +89,9 @@ namespace mpms = mediapipe::mediasequence;
 //   }
 // }
 namespace {
-uint8 ConvertFloatToByte(const float float_value) {
-  float clamped_value = MathUtil::Clamp(0.0f, 1.0f, float_value);
-  return static_cast<uint8>(clamped_value * 255.0 + .5f);
+uint8_t ConvertFloatToByte(const float float_value) {
+  float clamped_value = std::clamp(0.0f, 1.0f, float_value);
+  return static_cast<uint8_t>(clamped_value * 255.0 + .5f);
 }
 }  // namespace
 
@@ -152,6 +155,12 @@ class PackMediaSequenceCalculator : public CalculatorBase {
       }
       if (absl::StartsWith(tag, kFloatFeaturePrefixTag)) {
         cc->Inputs().Tag(tag).Set<std::vector<float>>();
+      }
+      if (absl::StartsWith(tag, kIntFeaturePrefixTag)) {
+        cc->Inputs().Tag(tag).Set<std::vector<int64_t>>();
+      }
+      if (absl::StartsWith(tag, kBytesFeaturePrefixTag)) {
+        cc->Inputs().Tag(tag).Set<std::vector<std::string>>();
       }
     }
 
@@ -231,6 +240,19 @@ class PackMediaSequenceCalculator : public CalculatorBase {
           mpms::ClearFeatureFloats(key, sequence_.get());
           mpms::ClearFeatureTimestamp(key, sequence_.get());
         }
+        if (absl::StartsWith(tag, kIntFeaturePrefixTag)) {
+          std::string key = tag.substr(
+              sizeof(kIntFeaturePrefixTag) / sizeof(*kIntFeaturePrefixTag) - 1);
+          mpms::ClearFeatureInts(key, sequence_.get());
+          mpms::ClearFeatureTimestamp(key, sequence_.get());
+        }
+        if (absl::StartsWith(tag, kBytesFeaturePrefixTag)) {
+          std::string key = tag.substr(sizeof(kBytesFeaturePrefixTag) /
+                                           sizeof(*kBytesFeaturePrefixTag) -
+                                       1);
+          mpms::ClearFeatureBytes(key, sequence_.get());
+          mpms::ClearFeatureTimestamp(key, sequence_.get());
+        }
         if (absl::StartsWith(tag, kKeypointsTag)) {
           std::string key =
               tag.substr(sizeof(kKeypointsTag) / sizeof(*kKeypointsTag) - 1);
@@ -243,11 +265,6 @@ class PackMediaSequenceCalculator : public CalculatorBase {
       }
     }
 
-    if (cc->Outputs().HasTag(kSequenceExampleTag)) {
-      cc->Outputs()
-          .Tag(kSequenceExampleTag)
-          .SetNextTimestampBound(Timestamp::Max());
-    }
     return absl::OkStatus();
   }
 
@@ -267,6 +284,17 @@ class PackMediaSequenceCalculator : public CalculatorBase {
     }
   }
 
+  absl::Status VerifySize() {
+    const int64_t MAX_PROTO_BYTES = 1073741823;
+    std::string id = mpms::HasExampleId(*sequence_)
+                         ? mpms::GetExampleId(*sequence_)
+                         : "example";
+    RET_CHECK_LT(sequence_->ByteSizeLong(), MAX_PROTO_BYTES)
+        << "sequence '" << id
+        << "' would be too many bytes to serialize after adding features.";
+    return absl::OkStatus();
+  }
+
   absl::Status Close(CalculatorContext* cc) override {
     auto& options = cc->Options<PackMediaSequenceCalculatorOptions>();
     if (options.reconcile_metadata()) {
@@ -275,6 +303,9 @@ class PackMediaSequenceCalculator : public CalculatorBase {
           options.reconcile_region_annotations(), sequence_.get()));
     }
 
+    if (options.skip_large_sequences()) {
+      RET_CHECK_OK(VerifySize());
+    }
     if (options.output_only_if_all_present()) {
       absl::Status status = VerifySequence();
       if (!status.ok()) {
@@ -291,7 +322,9 @@ class PackMediaSequenceCalculator : public CalculatorBase {
     if (cc->Outputs().HasTag(kSequenceExampleTag)) {
       cc->Outputs()
           .Tag(kSequenceExampleTag)
-          .Add(sequence_.release(), Timestamp::PostStream());
+          .Add(sequence_.release(), options.output_as_zero_timestamp()
+                                        ? Timestamp(0ll)
+                                        : Timestamp::PostStream());
     }
     sequence_.reset();
 
@@ -394,6 +427,27 @@ class PackMediaSequenceCalculator : public CalculatorBase {
                                cc->Inputs().Tag(tag).Get<std::vector<float>>(),
                                sequence_.get());
       }
+      if (absl::StartsWith(tag, kIntFeaturePrefixTag) &&
+          !cc->Inputs().Tag(tag).IsEmpty()) {
+        std::string key = tag.substr(
+            sizeof(kIntFeaturePrefixTag) / sizeof(*kIntFeaturePrefixTag) - 1);
+        mpms::AddFeatureTimestamp(key, cc->InputTimestamp().Value(),
+                                  sequence_.get());
+        mpms::AddFeatureInts(key,
+                             cc->Inputs().Tag(tag).Get<std::vector<int64_t>>(),
+                             sequence_.get());
+      }
+      if (absl::StartsWith(tag, kBytesFeaturePrefixTag) &&
+          !cc->Inputs().Tag(tag).IsEmpty()) {
+        std::string key = tag.substr(sizeof(kBytesFeaturePrefixTag) /
+                                         sizeof(*kBytesFeaturePrefixTag) -
+                                     1);
+        mpms::AddFeatureTimestamp(key, cc->InputTimestamp().Value(),
+                                  sequence_.get());
+        mpms::AddFeatureBytes(
+            key, cc->Inputs().Tag(tag).Get<std::vector<std::string>>(),
+            sequence_.get());
+      }
       if (absl::StartsWith(tag, kBBoxTag) && !cc->Inputs().Tag(tag).IsEmpty()) {
         std::string key = "";
         if (tag != kBBoxTag) {
@@ -475,7 +529,7 @@ class PackMediaSequenceCalculator : public CalculatorBase {
           RET_CHECK(!already_has_mask)
               << "We currently only support adding one mask per timestamp. "
               << sequence_->DebugString();
-          auto mask_mat_ptr = Location(detection.location_data()).GetCvMask();
+          auto mask_mat_ptr = GetCvMask(Location(detection.location_data()));
           std::vector<uchar> bytes;
           RET_CHECK(cv::imencode(".png", *mask_mat_ptr, bytes, {}));
 

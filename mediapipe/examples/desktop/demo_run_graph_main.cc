@@ -15,44 +15,42 @@
 // An example of sending OpenCV webcam frames into a MediaPipe graph.
 #include <cstdlib>
 
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/image_frame_opencv.h"
-#include "mediapipe/framework/port/commandlineflags.h"
 #include "mediapipe/framework/port/file_helpers.h"
 #include "mediapipe/framework/port/opencv_highgui_inc.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
 #include "mediapipe/framework/port/opencv_video_inc.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
 #include "mediapipe/framework/port/status.h"
+#include "mediapipe/util/resource_util.h"
 
 constexpr char kInputStream[] = "input_video";
 constexpr char kOutputStream[] = "output_video";
 constexpr char kWindowName[] = "MediaPipe";
 
-DEFINE_string(
-    calculator_graph_config_file, "",
-    "Name of file containing text format CalculatorGraphConfig proto.");
-DEFINE_string(input_video_path, "",
-              "Full path of video to load. "
-              "If not provided, attempt to use a webcam.");
-DEFINE_string(output_video_path, "",
-              "Full path of where to save result (.mp4 only). "
-              "If not provided, show result in a window.");
+ABSL_FLAG(std::string, calculator_graph_config_file, "",
+          "Name of file containing text format CalculatorGraphConfig proto.");
+ABSL_FLAG(std::string, input_video_path, "",
+          "Full path of video to load. "
+          "If not provided, attempt to use a webcam.");
+ABSL_FLAG(std::string, output_video_path, "",
+          "Full path of where to save result (.mp4 only). "
+          "If not provided, show result in a window.");
 
 absl::Status RunMPPGraph() {
   std::string calculator_graph_config_contents;
-  printf("start: mmp\n");
   MP_RETURN_IF_ERROR(mediapipe::file::GetContents(
       absl::GetFlag(FLAGS_calculator_graph_config_file),
       &calculator_graph_config_contents));
-  printf("GetContents\n");    
   LOG(INFO) << "Get calculator graph config contents: "
             << calculator_graph_config_contents;
   mediapipe::CalculatorGraphConfig config =
       mediapipe::ParseTextProtoOrDie<mediapipe::CalculatorGraphConfig>(
           calculator_graph_config_contents);
-  printf("initialize graph\n");
 
   LOG(INFO) << "Initialize the calculator graph.";
   mediapipe::CalculatorGraph graph;
@@ -151,7 +149,7 @@ absl::Status RunMPPGraph() {
 
 int main(int argc, char** argv) {
   google::InitGoogleLogging(argv[0]);
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  absl::ParseCommandLine(argc, argv);
   absl::Status run_status = RunMPPGraph();
   if (!run_status.ok()) {
     LOG(ERROR) << "Failed to run the graph: " << run_status.message();

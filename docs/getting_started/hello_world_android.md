@@ -1,5 +1,6 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/framework/getting_started/hello_world_android
 title: Hello World! on Android
 parent: MediaPipe on Android
 grand_parent: Getting Started
@@ -12,6 +13,12 @@ nav_order: 1
 1. TOC
 {:toc}
 ---
+
+**Attention:** *Thanks for your interest in MediaPipe! We have moved to
+[https://developers.google.com/mediapipe](https://developers.google.com/mediapipe)
+as the primary developer documentation site for MediaPipe as of April 3, 2023.*
+
+----
 
 ## Introduction
 
@@ -27,12 +34,12 @@ graph on Android.
 A simple camera app for real-time Sobel edge detection applied to a live video
 stream on an Android device.
 
-![edge_detection_android_gpu_gif](../images/mobile/edge_detection_android_gpu.gif)
+![edge_detection_android_gpu_gif](https://mediapipe.dev/images/mobile/edge_detection_android_gpu.gif)
 
 ## Setup
 
-1.  Install MediaPipe on your system, see [MediaPipe installation guide] for
-    details.
+1.  Install MediaPipe on your system, see
+    [MediaPipe installation guide](./install.md) for details.
 2.  Install Android Development SDK and Android NDK. See how to do so also in
     [MediaPipe installation guide].
 3.  Enable [developer options] on your Android device.
@@ -69,7 +76,7 @@ node: {
 
 A visualization of the graph is shown below:
 
-![edge_detection_mobile_gpu](../images/mobile/edge_detection_mobile_gpu.png)
+![edge_detection_mobile_gpu](https://mediapipe.dev/images/mobile/edge_detection_mobile_gpu.png)
 
 This graph has a single input stream named `input_video` for all incoming frames
 that will be provided by your device's camera.
@@ -260,7 +267,7 @@ adb install bazel-bin/$APPLICATION_PATH/helloworld.apk
 Open the application on your device. It should display a screen with the text
 `Hello World!`.
 
-![bazel_hello_world_android](../images/mobile/bazel_hello_world_android.png)
+![bazel_hello_world_android](https://mediapipe.dev/images/mobile/bazel_hello_world_android.png)
 
 ## Using the camera via `CameraX`
 
@@ -377,7 +384,7 @@ Add the following line in the `$APPLICATION_PATH/res/values/strings.xml` file:
 When the user doesn't grant camera permission, the screen will now look like
 this:
 
-![missing_camera_permission_android](../images/mobile/missing_camera_permission_android.png)
+![missing_camera_permission_android](https://mediapipe.dev/images/mobile/missing_camera_permission_android.png)
 
 Now, we will add the [`SurfaceTexture`] and [`SurfaceView`] objects to
 `MainActivity`:
@@ -753,7 +760,7 @@ And that's it! You should now be able to successfully build and run the
 application on the device and see Sobel edge detection running on a live camera
 feed! Congrats!
 
-![edge_detection_android_gpu_gif](../images/mobile/edge_detection_android_gpu.gif)
+![edge_detection_android_gpu_gif](https://mediapipe.dev/images/mobile/edge_detection_android_gpu.gif)
 
 If you ran into any issues, please see the full code of the tutorial
 [here](https://github.com/google/mediapipe/tree/master/mediapipe/examples/android/src/java/com/google/mediapipe/apps/basic).
@@ -770,7 +777,6 @@ If you ran into any issues, please see the full code of the tutorial
 [`ExternalTextureConverter`]:https://github.com/google/mediapipe/tree/master/mediapipe/java/com/google/mediapipe/components/ExternalTextureConverter.java
 [`FrameLayout`]:https://developer.android.com/reference/android/widget/FrameLayout
 [`FrameProcessor`]:https://github.com/google/mediapipe/tree/master/mediapipe/java/com/google/mediapipe/components/FrameProcessor.java
-[MediaPipe installation guide]:./install.md
 [`PermissionHelper`]: https://github.com/google/mediapipe/tree/master/mediapipe/java/com/google/mediapipe/components/PermissionHelper.java
 [`SurfaceHolder.Callback`]:https://developer.android.com/reference/android/view/SurfaceHolder.Callback.html
 [`SurfaceView`]:https://developer.android.com/reference/android/view/SurfaceView

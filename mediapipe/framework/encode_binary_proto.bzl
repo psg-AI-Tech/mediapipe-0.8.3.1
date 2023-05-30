@@ -79,13 +79,10 @@ def _get_proto_provider(dep):
 
 def _encode_binary_proto_impl(ctx):
     """Implementation of the encode_binary_proto rule."""
-    all_protos = depset()
-    for dep in ctx.attr.deps:
-        provider = _get_proto_provider(dep)
-        all_protos = depset(
-            direct = [],
-            transitive = [all_protos, provider.transitive_sources],
-        )
+    all_protos = depset(
+        direct = [],
+        transitive = [_get_proto_provider(dep).transitive_sources for dep in ctx.attr.deps],
+    )
 
     textpb = ctx.file.input
     binarypb = ctx.outputs.output or ctx.actions.declare_file(
@@ -120,13 +117,13 @@ def _encode_binary_proto_impl(ctx):
         data_runfiles = ctx.runfiles(transitive_files = output_depset),
     )]
 
-encode_binary_proto = rule(
+_encode_binary_proto = rule(
     implementation = _encode_binary_proto_impl,
     attrs = {
         "_proto_compiler": attr.label(
             executable = True,
             default = Label(PROTOC),
-            cfg = "host",
+            cfg = "exec",
         ),
         "deps": attr.label_list(
             providers = [[ProtoInfo], ["proto"]],
@@ -141,6 +138,28 @@ encode_binary_proto = rule(
         "output": attr.output(),
     },
 )
+
+def encode_binary_proto(name, input, message_type, deps, **kwargs):
+    if type(input) == type("string"):
+        input_label = input
+        textproto_srcs = [input]
+    elif type(input) == type(dict()):
+        # We cannot accept a select, as macros are unable to manipulate selects.
+        input_label = select(input)
+        srcs_dict = dict()
+        for k, v in input.items():
+            srcs_dict[k] = [v]
+        textproto_srcs = select(srcs_dict)
+    else:
+        fail("input should be a string or a dict, got %s" % input)
+
+    _encode_binary_proto(
+        name = name,
+        input = input_label,
+        message_type = message_type,
+        deps = deps,
+        **kwargs
+    )
 
 def _generate_proto_descriptor_set_impl(ctx):
     """Implementation of the generate_proto_descriptor_set rule."""
@@ -175,7 +194,7 @@ generate_proto_descriptor_set = rule(
         "_proto_compiler": attr.label(
             executable = True,
             default = Label(PROTOC),
-            cfg = "host",
+            cfg = "exec",
         ),
         "deps": attr.label_list(
             providers = [[ProtoInfo], ["proto"]],

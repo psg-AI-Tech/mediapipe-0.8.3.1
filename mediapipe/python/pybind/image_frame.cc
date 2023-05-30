@@ -1,4 +1,4 @@
-// Copyright 2020 The MediaPipe Authors.
+// Copyright 2020-2021 The MediaPipe Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,118 +18,6 @@
 
 namespace mediapipe {
 namespace python {
-namespace {
-
-template <typename T>
-py::array GenerateContiguousDataArrayHelper(const ImageFrame& image_frame,
-                                            const py::object& py_object) {
-  std::vector<int> shape{image_frame.Height(), image_frame.Width()};
-  if (image_frame.NumberOfChannels() > 1) {
-    shape.push_back(image_frame.NumberOfChannels());
-  }
-  py::array_t<T, py::array::c_style> contiguous_data;
-  if (image_frame.IsContiguous()) {
-    contiguous_data = py::array_t<T, py::array::c_style>(
-        shape, reinterpret_cast<const T*>(image_frame.PixelData()), py_object);
-  } else {
-    auto contiguous_data_copy =
-        absl::make_unique<T[]>(image_frame.Width() * image_frame.Height() *
-                               image_frame.NumberOfChannels());
-    image_frame.CopyToBuffer(contiguous_data_copy.get(),
-                             image_frame.PixelDataSizeStoredContiguously());
-    auto capsule = py::capsule(contiguous_data_copy.get(), [](void* data) {
-      if (data) {
-        delete[] reinterpret_cast<T*>(data);
-      }
-    });
-    contiguous_data = py::array_t<T, py::array::c_style>(
-        shape, contiguous_data_copy.release(), capsule);
-  }
-
-  // In both cases, the underlying data is not writable in Python.
-  py::detail::array_proxy(contiguous_data.ptr())->flags &=
-      ~py::detail::npy_api::NPY_ARRAY_WRITEABLE_;
-  return contiguous_data;
-}
-
-py::array GenerateContiguousDataArray(const ImageFrame& image_frame,
-                                      const py::object& py_object) {
-  switch (image_frame.ChannelSize()) {
-    case sizeof(uint8):
-      return GenerateContiguousDataArrayHelper<uint8>(image_frame, py_object)
-          .cast<py::array>();
-    case sizeof(uint16):
-      return GenerateContiguousDataArrayHelper<uint16>(image_frame, py_object)
-          .cast<py::array>();
-    case sizeof(float):
-      return GenerateContiguousDataArrayHelper<float>(image_frame, py_object)
-          .cast<py::array>();
-      break;
-    default:
-      throw RaisePyError(PyExc_RuntimeError,
-                         "Unsupported image frame channel size. Data is not "
-                         "uint8, uint16, or float?");
-  }
-}
-
-// Generates a contiguous data pyarray object on demand.
-// This function only accepts an image frame object that already stores
-// contiguous data. The output py::array points to the raw pixel data array of
-// the image frame object directly.
-py::array GenerateDataPyArrayOnDemand(const ImageFrame& image_frame,
-                                      const py::object& py_object) {
-  if (!image_frame.IsContiguous()) {
-    throw RaisePyError(PyExc_RuntimeError,
-                       "GenerateDataPyArrayOnDemand must take an ImageFrame "
-                       "object that stores contiguous data.");
-  }
-  return GenerateContiguousDataArray(image_frame, py_object);
-}
-
-// Gets the cached contiguous data array from the "__contiguous_data" attribute.
-// If the attribute doesn't exist, the function calls
-// GenerateContiguousDataArray() to generate the contiguous data pyarray object,
-// which realigns and copies the data from the original image frame object.
-// Then, the data array object is cached in the "__contiguous_data" attribute.
-// This function only accepts an image frame object that stores non-contiguous
-// data.
-py::array GetCachedContiguousDataAttr(const ImageFrame& image_frame,
-                                      const py::object& py_object) {
-  if (image_frame.IsContiguous()) {
-    throw RaisePyError(PyExc_RuntimeError,
-                       "GetCachedContiguousDataAttr must take an ImageFrame "
-                       "object that stores non-contiguous data.");
-  }
-  py::object get_data_attr =
-      py::getattr(py_object, "__contiguous_data", py::none());
-  if (image_frame.IsEmpty()) {
-    throw RaisePyError(PyExc_RuntimeError, "ImageFrame is unallocated.");
-  }
-  // If __contiguous_data attr doesn't store data yet, generates the contiguous
-  // data array object and caches the result.
-  if (get_data_attr.is_none()) {
-    py_object.attr("__contiguous_data") =
-        GenerateContiguousDataArray(image_frame, py_object);
-  }
-  return py_object.attr("__contiguous_data").cast<py::array>();
-}
-
-template <typename T>
-py::object GetValue(const ImageFrame& image_frame, const std::vector<int>& pos,
-                    const py::object& py_object) {
-  py::array_t<T, py::array::c_style> output_array =
-      image_frame.IsContiguous()
-          ? GenerateDataPyArrayOnDemand(image_frame, py_object)
-          : GetCachedContiguousDataAttr(image_frame, py_object);
-  if (pos.size() == 2) {
-    return py::cast(static_cast<T>(output_array.at(pos[0], pos[1])));
-  } else if (pos.size() == 3) {
-    return py::cast(static_cast<T>(output_array.at(pos[0], pos[1], pos[2])));
-  }
-  return py::none();
-}
-
-}  // namespace
 
 namespace py = pybind11;
 
@@ -195,14 +83,15 @@ void ImageFrameSubmodule(pybind11::module* module) {
   Creation examples:
     import cv2
     cv_mat = cv2.imread(input_file)[:, :, ::-1]
-    rgb_frame = mp.ImageFrame(format=ImageFormat.SRGB, data=cv_mat)
+    rgb_frame = mp.ImageFrame(image_format=ImageFormat.SRGB, data=cv_mat)
     gray_frame = mp.ImageFrame(
-        format=ImageFormat.GRAY, data=cv2.cvtColor(cv_mat, cv2.COLOR_RGB2GRAY))
+        image_format=ImageFormat.GRAY,
+        data=cv2.cvtColor(cv_mat, cv2.COLOR_RGB2GRAY))
 
     from PIL import Image
     pil_img = Image.new('RGB', (60, 30), color = 'red')
     image_frame = mp.ImageFrame(
-        format=mp.ImageFormat.SRGB, data=np.asarray(pil_img))
+        image_format=mp.ImageFormat.SRGB, data=np.asarray(pil_img))
 
   The pixel data in an ImageFrame can be retrieved as a numpy ndarray by calling
   `ImageFrame.numpy_view()`. The returned numpy ndarray is a reference to the
@@ -225,7 +114,7 @@ void ImageFrameSubmodule(pybind11::module* module) {
   image_frame
       .def(
           py::init([](mediapipe::ImageFormat::Format format,
-                      const py::array_t<uint8, py::array::c_style>& data) {
+                      const py::array_t<uint8_t, py::array::c_style>& data) {
             if (format != mediapipe::ImageFormat::GRAY8 &&
                 format != mediapipe::ImageFormat::SRGB &&
                 format != mediapipe::ImageFormat::SRGBA) {
@@ -233,13 +122,13 @@ void ImageFrameSubmodule(pybind11::module* module) {
                                  "uint8 image data should be one of the GRAY8, "
                                  "SRGB, and SRGBA MediaPipe image formats.");
             }
-            return CreateImageFrame<uint8>(format, data);
+            return CreateImageFrame<uint8_t>(format, data);
           }),
           R"doc(For uint8 data type, valid ImageFormat are GRAY8, SGRB, and SRGBA.)doc",
           py::arg("image_format"), py::arg("data").noconvert())
       .def(
           py::init([](mediapipe::ImageFormat::Format format,
-                      const py::array_t<uint16, py::array::c_style>& data) {
+                      const py::array_t<uint16_t, py::array::c_style>& data) {
             if (format != mediapipe::ImageFormat::GRAY16 &&
                 format != mediapipe::ImageFormat::SRGB48 &&
                 format != mediapipe::ImageFormat::SRGBA64) {
@@ -248,7 +137,7 @@ void ImageFrameSubmodule(pybind11::module* module) {
                   "uint16 image data should be one of the GRAY16, "
                   "SRGB48, and SRGBA64 MediaPipe image formats.");
             }
-            return CreateImageFrame<uint16>(format, data);
+            return CreateImageFrame<uint16_t>(format, data);
           }),
           R"doc(For uint16 data type, valid ImageFormat are GRAY16, SRGB48, and SRGBA64.)doc",
           py::arg("image_format"), py::arg("data").noconvert())
@@ -314,9 +203,9 @@ void ImageFrameSubmodule(pybind11::module* module) {
             py::cast(self, py::return_value_policy::reference);
         switch (self.ByteDepth()) {
           case 1:
-            return GetValue<uint8>(self, pos, py_object);
+            return GetValue<uint8_t>(self, pos, py_object);
           case 2:
-            return GetValue<uint16>(self, pos, py_object);
+            return GetValue<uint16_t>(self, pos, py_object);
           case 4:
             return GetValue<float>(self, pos, py_object);
           default:

@@ -1,5 +1,6 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/framework/getting_started/cpp
 title: MediaPipe in C++
 parent: Getting Started
 has_children: true
@@ -13,6 +14,12 @@ nav_order: 5
 1. TOC
 {:toc}
 ---
+
+**Attention:** *Thanks for your interest in MediaPipe! We have moved to
+[https://developers.google.com/mediapipe](https://developers.google.com/mediapipe)
+as the primary developer documentation site for MediaPipe as of April 3, 2023.*
+
+----
 
 Please follow instructions below to build C++ command-line example apps in the
 supported MediaPipe [solutions](../solutions/solutions.md). To learn more about
@@ -54,7 +61,7 @@ Note: This currently works only on Linux, and please first follow
 
     ```bash
     GLOG_logtostderr=1 bazel-bin/mediapipe/examples/desktop/hand_tracking/hand_tracking_gpu \
-      --calculator_graph_config_file=mediapipe/graphs/hand_tracking/hand_tracking_mobile.pbtxt
+      --calculator_graph_config_file=mediapipe/graphs/hand_tracking/hand_tracking_desktop_live_gpu.pbtxt
     ```
 
     This will open up your webcam as long as it is connected and on. Any errors

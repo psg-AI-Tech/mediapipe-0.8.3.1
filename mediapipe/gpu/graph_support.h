@@ -16,8 +16,6 @@
 #ifndef MEDIAPIPE_GPU_GRAPH_SUPPORT_H_
 #define MEDIAPIPE_GPU_GRAPH_SUPPORT_H_
 
-#include "mediapipe/gpu/gpu_service.h"
-
 namespace mediapipe {
 
 static constexpr char kGpuSharedTagName[] = "GPU_SHARED";

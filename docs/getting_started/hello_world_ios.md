@@ -1,5 +1,6 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/framework/getting_started/hello_world_ios
 title: Hello World! on iOS
 parent: MediaPipe on iOS
 grand_parent: Getting Started
@@ -12,6 +13,12 @@ nav_order: 1
 1. TOC
 {:toc}
 ---
+
+**Attention:** *Thanks for your interest in MediaPipe! We have moved to
+[https://developers.google.com/mediapipe](https://developers.google.com/mediapipe)
+as the primary developer documentation site for MediaPipe as of April 3, 2023.*
+
+----
 
 ## Introduction
 
@@ -27,12 +34,12 @@ on iOS.
 A simple camera app for real-time Sobel edge detection applied to a live video
 stream on an iOS device.
 
-![edge_detection_ios_gpu_gif](../images/mobile/edge_detection_ios_gpu.gif)
+![edge_detection_ios_gpu_gif](https://mediapipe.dev/images/mobile/edge_detection_ios_gpu.gif)
 
 ## Setup
 
-1.  Install MediaPipe on your system, see [MediaPipe installation guide] for
-    details.
+1.  Install MediaPipe on your system, see
+    [MediaPipe installation guide](./install.md) for details.
 2.  Setup your iOS device for development.
 3.  Setup [Bazel] on your system to build and deploy the iOS app.
 
@@ -67,7 +74,7 @@ node: {
 
 A visualization of the graph is shown below:
 
-![edge_detection_mobile_gpu](../images/mobile/edge_detection_mobile_gpu.png)
+![edge_detection_mobile_gpu](https://mediapipe.dev/images/mobile/edge_detection_mobile_gpu.png)
 
 This graph has a single input stream named `input_video` for all incoming frames
 that will be provided by your device's camera.
@@ -113,6 +120,10 @@ bazel to build the iOS application. The content of the
 5.  `Main.storyboard` and `Launch.storyboard`
 6.  `Assets.xcassets` directory.
 
+Note: In newer versions of Xcode, you may see additional files `SceneDelegate.h`
+and `SceneDelegate.m`. Make sure to copy them too and add them to the `BUILD`
+file mentioned below.
+
 Copy these files to a directory named `HelloWorld` to a location that can access
 the MediaPipe source code. For example, the source code of the application that
 we will build in this tutorial is located in
@@ -127,7 +138,7 @@ Create a `BUILD` file in the `$APPLICATION_PATH` and add the following build
 rules:
 
 ```
-MIN_IOS_VERSION = "10.0"
+MIN_IOS_VERSION = "11.0"
 
 load(
     "@build_bazel_rules_apple//apple:ios.bzl",
@@ -247,6 +258,12 @@ We need to get frames from the `_cameraSource` into our application
 `MPPInputSourceDelegate`. So our application `ViewController` can be a delegate
 of `_cameraSource`.
 
+Update the interface definition of `ViewController` accordingly:
+
+```
+@interface ViewController () <MPPInputSourceDelegate>
+```
+
 To handle camera setup and process incoming frames, we should use a queue
 different from the main queue. Add the following to the implementation block of
 the `ViewController`:
@@ -287,6 +304,12 @@ first set up a way to display the camera frames. MediaPipe provides another
 utility called `MPPLayerRenderer` to display images on the screen. This utility
 can be used to display `CVPixelBufferRef` objects, which is the type of the
 images provided by `MPPCameraInputSource` to its delegates.
+
+In `ViewController.m`, add the following import line:
+
+```
+#import "mediapipe/objc/MPPLayerRenderer.h"
+```
 
 To display images of the screen, we need to add a new `UIView` object called
 `_liveView` to the `ViewController`.
@@ -410,6 +433,12 @@ Finally, rename the file `ViewController.m` to `ViewController.mm` to support
 Objective-C++.
 
 ### Use the graph in `ViewController`
+
+In `ViewController.m`, add the following import line:
+
+```
+#import "mediapipe/objc/MPPGraph.h"
+```
 
 Declare a static constant with the name of the graph, the input stream and the
 output stream:
@@ -549,10 +578,16 @@ method to receive packets on this output stream and display them on the screen:
 }
 ```
 
+Update the interface definition of `ViewController` with `MPPGraphDelegate`:
+
+```
+@interface ViewController () <MPPGraphDelegate, MPPInputSourceDelegate>
+```
+
 And that is all! Build and run the app on your iOS device. You should see the
 results of running the edge detection graph on a live video feed. Congrats!
 
-![edge_detection_ios_gpu_gif](../images/mobile/edge_detection_ios_gpu.gif)
+![edge_detection_ios_gpu_gif](https://mediapipe.dev/images/mobile/edge_detection_ios_gpu.gif)
 
 Please note that the iOS examples now use a [common] template app. The code in
 this tutorial is used in the [common] template app. The [helloworld] app has the
@@ -560,6 +595,5 @@ appropriate `BUILD` file dependencies for the edge detection graph.
 
 [Bazel]:https://bazel.build/
 [`edge_detection_mobile_gpu.pbtxt`]:https://github.com/google/mediapipe/tree/master/mediapipe/graphs/edge_detection/edge_detection_mobile_gpu.pbtxt
-[MediaPipe installation guide]:./install.md
-[common]:(https://github.com/google/mediapipe/tree/master/mediapipe/examples/ios/common)
-[helloworld]:(https://github.com/google/mediapipe/tree/master/mediapipe/examples/ios/helloworld)
+[common]:https://github.com/google/mediapipe/tree/master/mediapipe/examples/ios/common
+[helloworld]:https://github.com/google/mediapipe/tree/master/mediapipe/examples/ios/helloworld

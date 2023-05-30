@@ -134,16 +134,8 @@ def _metal_library_impl(ctx):
         ),
     )
 
-    # This circumlocution is needed because new_objc_provider rejects
-    # an empty depset, with the error:
-    # "Value for key header must be a set of File, instead found set of unknown."
-    # It also rejects an explicit "None".
-    additional_params = {}
-    if ctx.files.hdrs:
-        additional_params["header"] = depset([f for f in ctx.files.hdrs])
     objc_provider = apple_common.new_objc_provider(
-        providers = [x.objc for x in ctx.attr.deps if hasattr(x, "objc")],
-        **additional_params
+        providers = [x[apple_common.Objc] for x in ctx.attr.deps if apple_common.Objc in x],
     )
 
     cc_infos = [dep[CcInfo] for dep in ctx.attr.deps if CcInfo in dep]
@@ -169,7 +161,7 @@ def _metal_library_impl(ctx):
 METAL_LIBRARY_ATTRS = dicts.add(apple_support.action_required_attrs(), {
     "srcs": attr.label_list(allow_files = [".metal"], allow_empty = False),
     "hdrs": attr.label_list(allow_files = [".h"]),
-    "deps": attr.label_list(providers = [["objc", CcInfo]]),
+    "deps": attr.label_list(providers = [["objc", CcInfo], [apple_common.Objc, CcInfo]]),
     "copts": attr.string_list(),
     "minimum_os_version": attr.string(),
 })

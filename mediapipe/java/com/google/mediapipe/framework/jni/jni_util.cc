@@ -111,6 +111,22 @@ std::string JStringToStdString(JNIEnv* env, jstring jstr) {
   return str;
 }
 
+// Converts a `java.util.List<String>` to a `std::vector<std::string>`.
+std::vector<std::string> JavaListToStdStringVector(JNIEnv* env, jobject from) {
+  jclass cls = env->FindClass("java/util/List");
+  int size = env->CallIntMethod(from, env->GetMethodID(cls, "size", "()I"));
+  std::vector<std::string> result;
+  result.reserve(size);
+  for (int i = 0; i < size; i++) {
+    jobject element = env->CallObjectMethod(
+        from, env->GetMethodID(cls, "get", "(I)Ljava/lang/Object;"), i);
+    result.push_back(JStringToStdString(env, static_cast<jstring>(element)));
+    env->DeleteLocalRef(element);
+  }
+  env->DeleteLocalRef(cls);
+  return result;
+}
+
 jthrowable CreateMediaPipeException(JNIEnv* env, absl::Status status) {
   auto& class_registry = mediapipe::android::ClassRegistry::GetInstance();
   std::string mpe_class_name = class_registry.GetClassName(
@@ -127,8 +143,10 @@ jthrowable CreateMediaPipeException(JNIEnv* env, absl::Status status) {
   env->SetByteArrayRegion(message_bytes, 0, length,
                           reinterpret_cast<jbyte*>(const_cast<char*>(
                               std::string(status.message()).c_str())));
-  return reinterpret_cast<jthrowable>(
+  jthrowable result = reinterpret_cast<jthrowable>(
       env->NewObject(status_cls, status_ctr, status.code(), message_bytes));
+  env->DeleteLocalRef(status_cls);
+  return result;
 }
 
 bool ThrowIfError(JNIEnv* env, absl::Status status) {
@@ -140,10 +158,20 @@ bool ThrowIfError(JNIEnv* env, absl::Status status) {
 }
 
 SerializedMessageIds::SerializedMessageIds(JNIEnv* env, jobject data) {
-  jclass j_class = reinterpret_cast<jclass>(env->NewGlobalRef(env->FindClass(
-      "com/google/mediapipe/framework/ProtoUtil$SerializedMessage")));
-  type_name_id = env->GetFieldID(j_class, "typeName", "Ljava/lang/String;");
-  value_id = env->GetFieldID(j_class, "value", "[B");
+  auto& class_registry = mediapipe::android::ClassRegistry::GetInstance();
+  std::string serialized_message(
+      mediapipe::android::ClassRegistry::kProtoUtilSerializedMessageClassName);
+  std::string serialized_message_obfuscated =
+      class_registry.GetClassName(serialized_message);
+  std::string type_name_obfuscated =
+      class_registry.GetFieldName(serialized_message, "typeName");
+  std::string value_obfuscated =
+      class_registry.GetFieldName(serialized_message, "value");
+  jclass j_class = env->FindClass(serialized_message_obfuscated.c_str());
+  type_name_id = env->GetFieldID(j_class, type_name_obfuscated.c_str(),
+                                 "Ljava/lang/String;");
+  value_id = env->GetFieldID(j_class, value_obfuscated.c_str(), "[B");
+  env->DeleteLocalRef(j_class);
 }
 
 }  // namespace android

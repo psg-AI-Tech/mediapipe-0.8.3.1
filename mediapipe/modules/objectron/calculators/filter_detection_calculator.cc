@@ -37,38 +37,11 @@ constexpr char kDetectionTag[] = "DETECTION";
 constexpr char kDetectionsTag[] = "DETECTIONS";
 constexpr char kLabelsTag[] = "LABELS";
 constexpr char kLabelsCsvTag[] = "LABELS_CSV";
+constexpr char kLabelMapTag[] = "LABEL_MAP";
 
-using mediapipe::ContainsKey;
 using mediapipe::RE2;
 using Detections = std::vector<Detection>;
 using Strings = std::vector<std::string>;
-
-}  // namespace
-
-// Filters the entries in a Detection to only those with valid scores
-// for the specified allowed labels. Allowed labels are provided as a
-// vector<std::string> in an optional input side packet. Allowed labels can
-// contain simple strings or regular expressions. The valid score range
-// can be set in the options.The allowed labels can be provided as
-// vector<std::string> (LABELS) or CSV std::string (LABELS_CSV) containing class
-// names of allowed labels. Note: Providing an empty vector in the input side
-// packet Packet causes this calculator to act as a sink if
-// empty_allowed_labels_means_allow_everything is set to false (default value).
-// To allow all labels, use the calculator with no input side packet stream, or
-// set empty_allowed_labels_means_allow_everything to true.
-//
-// Example config:
-// node {
-//   calculator: "FilterDetectionCalculator"
-//   input_stream: "DETECTIONS:detections"
-//   output_stream: "DETECTIONS:filtered_detections"
-//   input_side_packet: "LABELS:allowed_labels"
-//   options: {
-//     [mediapipe.FilterDetectionCalculatorOptions.ext]: {
-//       min_score: 0.5
-//     }
-//   }
-// }
 
 struct FirstGreaterComparator {
   bool operator()(const std::pair<float, int>& a,
@@ -113,6 +86,33 @@ absl::Status SortLabelsByDecreasingScore(const Detection& detection,
   return absl::OkStatus();
 }
 
+}  // namespace
+
+// Filters the entries in a Detection to only those with valid scores
+// for the specified allowed labels. Allowed labels are provided as a
+// std::vector<std::string> in an optional input side packet. Allowed labels can
+// contain simple strings or regular expressions. The valid score range
+// can be set in the options.The allowed labels can be provided as
+// std::vector<std::string> (LABELS) or CSV string (LABELS_CSV) containing class
+// names of allowed labels. Note: Providing an empty vector in the input side
+// packet Packet causes this calculator to act as a sink if
+// empty_allowed_labels_means_allow_everything is set to false (default value).
+// To allow all labels, use the calculator with no input side packet stream, or
+// set empty_allowed_labels_means_allow_everything to true.
+//
+// Example config:
+// node {
+//   calculator: "FilterDetectionCalculator"
+//   input_stream: "DETECTIONS:detections"
+//   output_stream: "DETECTIONS:filtered_detections"
+//   input_side_packet: "LABELS:allowed_labels"
+//   options: {
+//     [mediapipe.FilterDetectionCalculatorOptions.ext]: {
+//       min_score: 0.5
+//     }
+//   }
+// }
+
 class FilterDetectionCalculator : public CalculatorBase {
  public:
   static absl::Status GetContract(CalculatorContract* cc);
@@ -152,6 +152,11 @@ absl::Status FilterDetectionCalculator::GetContract(CalculatorContract* cc) {
   if (cc->InputSidePackets().HasTag(kLabelsCsvTag)) {
     cc->InputSidePackets().Tag(kLabelsCsvTag).Set<std::string>();
   }
+  if (cc->InputSidePackets().HasTag(kLabelMapTag)) {
+    cc->InputSidePackets()
+        .Tag(kLabelMapTag)
+        .Set<std::unique_ptr<std::map<int, std::string>>>();
+  }
   return absl::OkStatus();
 }
 
@@ -159,26 +164,35 @@ absl::Status FilterDetectionCalculator::Open(CalculatorContext* cc) {
   cc->SetOffset(TimestampDiff(0));
   options_ = cc->Options<FilterDetectionCalculatorOptions>();
   limit_labels_ = cc->InputSidePackets().HasTag(kLabelsTag) ||
-                  cc->InputSidePackets().HasTag(kLabelsCsvTag);
+                  cc->InputSidePackets().HasTag(kLabelsCsvTag) ||
+                  cc->InputSidePackets().HasTag(kLabelMapTag);
   if (limit_labels_) {
-    Strings whitelist_labels;
+    Strings allowlist_labels;
     if (cc->InputSidePackets().HasTag(kLabelsCsvTag)) {
-      whitelist_labels = absl::StrSplit(
+      allowlist_labels = absl::StrSplit(
           cc->InputSidePackets().Tag(kLabelsCsvTag).Get<std::string>(), ',',
           absl::SkipWhitespace());
-      for (auto& e : whitelist_labels) {
+      for (auto& e : allowlist_labels) {
         absl::StripAsciiWhitespace(&e);
       }
-    } else {
-      whitelist_labels = cc->InputSidePackets().Tag(kLabelsTag).Get<Strings>();
+    } else if (cc->InputSidePackets().HasTag(kLabelsTag)) {
+      allowlist_labels = cc->InputSidePackets().Tag(kLabelsTag).Get<Strings>();
+    } else if (cc->InputSidePackets().HasTag(kLabelMapTag)) {
+      auto label_map = cc->InputSidePackets()
+                           .Tag(kLabelMapTag)
+                           .Get<std::unique_ptr<std::map<int, std::string>>>()
+                           .get();
+      for (const auto& [_, v] : *label_map) {
+        allowlist_labels.push_back(v);
+      }
     }
-    allowed_labels_.insert(whitelist_labels.begin(), whitelist_labels.end());
+    allowed_labels_.insert(allowlist_labels.begin(), allowlist_labels.end());
   }
   if (limit_labels_ && allowed_labels_.empty()) {
     if (options_.fail_on_empty_labels()) {
-      cc->GetCounter("VideosWithEmptyLabelsWhitelist")->Increment();
+      cc->GetCounter("VideosWithEmptyLabelsAllowlist")->Increment();
       return tool::StatusFail(
-          "FilterDetectionCalculator received empty whitelist with "
+          "FilterDetectionCalculator received empty allowlist with "
           "fail_on_empty_labels = true.");
     }
     if (options_.empty_allowed_labels_means_allow_everything()) {
@@ -197,7 +211,7 @@ absl::Status FilterDetectionCalculator::Process(CalculatorContext* cc) {
   if (cc->Inputs().HasTag(kDetectionsTag)) {
     detections = cc->Inputs().Tag(kDetectionsTag).Get<Detections>();
   } else if (cc->Inputs().HasTag(kDetectionTag)) {
-    detections.emplace_back(cc->Inputs().Tag(kDetectionsTag).Get<Detection>());
+    detections.emplace_back(cc->Inputs().Tag(kDetectionTag).Get<Detection>());
   }
   std::unique_ptr<Detections> outputs(new Detections);
   for (const auto& input : detections) {
@@ -230,14 +244,14 @@ absl::Status FilterDetectionCalculator::Process(CalculatorContext* cc) {
         .Add(outputs.release(), cc->InputTimestamp());
   } else if (!outputs->empty()) {
     cc->Outputs()
-        .Tag(kDetectionsTag)
+        .Tag(kDetectionTag)
         .Add(new Detection((*outputs)[0]), cc->InputTimestamp());
   }
   return absl::OkStatus();
 }
 
 bool FilterDetectionCalculator::IsValidLabel(const std::string& label) {
-  bool match = !limit_labels_ || ContainsKey(allowed_labels_, label);
+  bool match = !limit_labels_ || allowed_labels_.contains(label);
   if (!match) {
     // If no exact match is found, check for regular expression
     // comparions in the allowed_labels.

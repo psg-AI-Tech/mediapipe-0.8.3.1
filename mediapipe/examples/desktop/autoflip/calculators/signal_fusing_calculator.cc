@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_map.h"
 #include "mediapipe/examples/desktop/autoflip/autoflip_messages.pb.h"
 #include "mediapipe/examples/desktop/autoflip/calculators/signal_fusing_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -27,8 +28,6 @@
 using mediapipe::Packet;
 using mediapipe::PacketTypeSet;
 using mediapipe::autoflip::DetectionSet;
-using mediapipe::autoflip::SalientRegion;
-using mediapipe::autoflip::SignalType;
 
 constexpr char kIsShotBoundaryTag[] = "IS_SHOT_BOUNDARY";
 constexpr char kSignalInputsTag[] = "SIGNAL";
@@ -178,8 +177,8 @@ absl::Status SignalFusingCalculator::Close(mediapipe::CalculatorContext* cc) {
 
 absl::Status SignalFusingCalculator::ProcessScene(
     mediapipe::CalculatorContext* cc) {
-  std::map<std::string, int> detection_count;
-  std::map<std::string, float> multiframe_score;
+  absl::btree_map<std::string, int> detection_count;
+  absl::btree_map<std::string, float> multiframe_score;
   // Create a unified score for all items with temporal ids.
   for (const Frame& frame : scene_frames_) {
     for (const auto& detection : frame.input_detections) {

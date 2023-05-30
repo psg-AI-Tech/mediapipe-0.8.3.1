@@ -29,7 +29,6 @@
 #include "mediapipe/framework/port/threadpool.h"
 #include "mediapipe/framework/tool/executor_util.h"
 #include "mediapipe/framework/tool/name_util.h"
-#include "mediapipe/gpu/gpu_shared_data_internal.h"
 #include "mediapipe/gpu/graph_support.h"
 #include "mediapipe/java/com/google/mediapipe/framework/jni/class_registry.h"
 #include "mediapipe/java/com/google/mediapipe/framework/jni/jni_util.h"
@@ -41,6 +40,7 @@
 #endif  // __ANDROID__
 #if !MEDIAPIPE_DISABLE_GPU
 #include "mediapipe/gpu/egl_surface_holder.h"
+#include "mediapipe/gpu/gpu_shared_data_internal.h"
 #endif  // !MEDIAPIPE_DISABLE_GPU
 
 namespace mediapipe {
@@ -89,8 +89,18 @@ class CallbackHandler {
                              packet, header);
   }
 
+  void PacketListCallback(const std::vector<Packet>& packets) {
+    context_->CallbackToJava(mediapipe::java::GetJNIEnv(), java_callback_,
+                             packets);
+  }
+
   std::function<void(const Packet&)> CreateCallback() {
     return std::bind(&CallbackHandler::PacketCallback, this,
+                     std::placeholders::_1);
+  }
+
+  std::function<void(const std::vector<Packet>&)> CreatePacketListCallback() {
+    return std::bind(&CallbackHandler::PacketListCallback, this,
                      std::placeholders::_1);
   }
 
@@ -191,6 +201,22 @@ absl::Status Graph::AddCallbackHandler(std::string output_stream_name,
   return absl::OkStatus();
 }
 
+absl::Status Graph::AddMultiStreamCallbackHandler(
+    std::vector<std::string> output_stream_names, jobject java_callback,
+    bool observe_timestamp_bounds) {
+  if (!graph_config()) {
+    return absl::InternalError("Graph is not loaded!");
+  }
+  auto handler =
+      absl::make_unique<internal::CallbackHandler>(this, java_callback);
+  tool::AddMultiStreamCallback(
+      output_stream_names, handler->CreatePacketListCallback(), graph_config(),
+      &side_packets_, observe_timestamp_bounds);
+  EnsureMinimumExecutorStackSizeForJava();
+  callback_handlers_.emplace_back(std::move(handler));
+  return absl::OkStatus();
+}
+
 int64_t Graph::AddSurfaceOutput(const std::string& output_stream_name) {
   if (!graph_config()) {
     LOG(ERROR) << "Graph is not loaded!";
@@ -205,8 +231,6 @@ int64_t Graph::AddSurfaceOutput(const std::string& output_stream_name) {
       *graph_config(), absl::StrCat("egl_surface_sink_", output_stream_name)));
   sink_node->set_calculator("GlSurfaceSinkCalculator");
   sink_node->add_input_stream(output_stream_name);
-  sink_node->add_input_side_packet(
-      absl::StrCat(kGpuSharedTagName, ":", kGpuSharedSidePacketName));
 
   const std::string input_side_packet_name =
       mediapipe::tool::GetUnusedSidePacketName(
@@ -333,6 +357,45 @@ void Graph::CallbackToJava(JNIEnv* env, jobject java_callback_obj,
   env->DeleteLocalRef(java_header_packet);
 }
 
+void Graph::CallbackToJava(JNIEnv* env, jobject java_callback_obj,
+                           const std::vector<Packet>& packets) {
+  jclass callback_cls = env->GetObjectClass(java_callback_obj);
+
+  auto& class_registry = mediapipe::android::ClassRegistry::GetInstance();
+  const std::string process_method_name = class_registry.GetMethodName(
+      mediapipe::android::ClassRegistry::kPacketListCallbackClassName,
+      "process");
+  jmethodID processMethod = env->GetMethodID(
+      callback_cls, process_method_name.c_str(), "(Ljava/util/List;)V");
+
+  // TODO: move to register natives.
+  jclass list_cls = env->FindClass("java/util/ArrayList");
+  jobject java_list =
+      env->NewObject(list_cls, env->GetMethodID(list_cls, "<init>", "()V"));
+  jmethodID add_method =
+      env->GetMethodID(list_cls, "add", "(Ljava/lang/Object;)Z");
+  std::vector<int64_t> packet_handles;
+  for (const Packet& packet : packets) {
+    int64_t packet_handle = WrapPacketIntoContext(packet);
+    packet_handles.push_back(packet_handle);
+    jobject java_packet =
+        CreateJavaPacket(env, global_java_packet_cls_, packet_handle);
+    env->CallBooleanMethod(java_list, add_method, java_packet);
+    env->DeleteLocalRef(java_packet);
+  }
+
+  VLOG(2) << "Calling java callback.";
+  env->CallVoidMethod(java_callback_obj, processMethod, java_list);
+  // release the packet after callback.
+  for (int64_t packet_handle : packet_handles) {
+    RemovePacket(packet_handle);
+  }
+  env->DeleteLocalRef(callback_cls);
+  env->DeleteLocalRef(list_cls);
+  env->DeleteLocalRef(java_list);
+  VLOG(2) << "Returned from java callback.";
+}
+
 void Graph::SetPacketJavaClass(JNIEnv* env) {
   if (global_java_packet_cls_ == nullptr) {
     auto& class_registry = ClassRegistry::GetInstance();
@@ -384,11 +447,13 @@ absl::Status Graph::StartRunningGraph(JNIEnv* env) {
   }
   absl::Status status;
 #if !MEDIAPIPE_DISABLE_GPU
-  status = running_graph_->SetGpuResources(gpu_resources_);
-  if (!status.ok()) {
-    LOG(ERROR) << status.message();
-    running_graph_.reset(nullptr);
-    return status;
+  if (gpu_resources_) {
+    status = running_graph_->SetGpuResources(gpu_resources_);
+    if (!status.ok()) {
+      LOG(ERROR) << status.message();
+      running_graph_.reset(nullptr);
+      return status;
+    }
   }
 #endif  // !MEDIAPIPE_DISABLE_GPU
 
@@ -507,22 +572,24 @@ void Graph::SetGraphInputStreamAddMode(
   graph_input_stream_add_mode_ = mode;
 }
 
+#if !MEDIAPIPE_DISABLE_GPU
 mediapipe::GpuResources* Graph::GetGpuResources() const {
   return gpu_resources_.get();
 }
+#endif  // !MEDIAPIPE_DISABLE_GPU
 
-absl::Status Graph::SetParentGlContext(int64 java_gl_context) {
+absl::Status Graph::SetParentGlContext(int64_t java_gl_context) {
+#if MEDIAPIPE_DISABLE_GPU
+  LOG(FATAL) << "GPU support has been disabled in this build!";
+#else
   if (gpu_resources_) {
     return absl::AlreadyExistsError(
         "trying to set the parent GL context, but the gpu shared "
         "data has already been set up.");
   }
-#if MEDIAPIPE_DISABLE_GPU
-  LOG(FATAL) << "GPU support has been disabled in this build!";
-#else
-  gpu_resources_ = mediapipe::GpuResources::Create(
-                       reinterpret_cast<EGLContext>(java_gl_context))
-                       .value();
+  ASSIGN_OR_RETURN(gpu_resources_,
+                   mediapipe::GpuResources::Create(
+                       reinterpret_cast<EGLContext>(java_gl_context)));
 #endif  // MEDIAPIPE_DISABLE_GPU
   return absl::OkStatus();
 }

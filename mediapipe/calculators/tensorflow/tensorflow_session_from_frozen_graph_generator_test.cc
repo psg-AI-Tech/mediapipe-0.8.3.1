@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/flags/flag.h"
 #include "absl/strings/substitute.h"
 #include "mediapipe/calculators/tensorflow/tensorflow_session.h"
 #include "mediapipe/calculators/tensorflow/tensorflow_session_from_frozen_graph_generator.pb.h"
@@ -19,7 +20,6 @@
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/packet.h"
 #include "mediapipe/framework/packet_generator.pb.h"
-#include "mediapipe/framework/port/commandlineflags.h"
 #include "mediapipe/framework/port/file_helpers.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -37,6 +37,10 @@ namespace {
 
 namespace tf = ::tensorflow;
 
+constexpr char kStringModelFilePathTag[] = "STRING_MODEL_FILE_PATH";
+constexpr char kStringModelTag[] = "STRING_MODEL";
+constexpr char kSessionTag[] = "SESSION";
+
 std::string GetGraphDefPath() {
   return mediapipe::file::JoinPath("./",
                                    "mediapipe/calculators/tensorflow/"
@@ -47,7 +51,7 @@ std::string GetGraphDefPath() {
 tf::Tensor TensorMatrix1x3(const int v1, const int v2, const int v3) {
   tf::Tensor tensor(tf::DT_INT32,
                     tf::TensorShape(std::vector<tf::int64>({1, 3})));
-  auto matrix = tensor.matrix<int32>();
+  auto matrix = tensor.matrix<int32_t>();
   matrix(0, 0) = v1;
   matrix(0, 1) = v2;
   matrix(0, 2) = v3;
@@ -72,7 +76,7 @@ class TensorFlowSessionFromFrozenGraphGeneratorTest : public ::testing::Test {
 
   void VerifySignatureMap(PacketSet* output_side_packets) {
     const TensorFlowSession& session =
-        output_side_packets->Tag("SESSION").Get<TensorFlowSession>();
+        output_side_packets->Tag(kSessionTag).Get<TensorFlowSession>();
     // Session must be set.
     ASSERT_NE(session.session, nullptr);
 
@@ -179,7 +183,7 @@ TEST_F(TensorFlowSessionFromFrozenGraphGeneratorTest,
   MP_EXPECT_OK(mediapipe::file::GetContents(GetGraphDefPath(),
                                             &serialized_graph_contents));
   generator_options_->clear_graph_proto_path();
-  input_side_packets.Tag("STRING_MODEL") =
+  input_side_packets.Tag(kStringModelTag) =
       Adopt(new std::string(serialized_graph_contents));
   absl::Status run_status = tool::RunGenerateAndValidateTypes(
       "TensorFlowSessionFromFrozenGraphGenerator", extendable_options_,
@@ -196,7 +200,7 @@ TEST_F(
   PacketSet output_side_packets(
       tool::CreateTagMap({"SESSION:session"}).value());
   generator_options_->clear_graph_proto_path();
-  input_side_packets.Tag("STRING_MODEL_FILE_PATH") =
+  input_side_packets.Tag(kStringModelFilePathTag) =
       Adopt(new std::string(GetGraphDefPath()));
   absl::Status run_status = tool::RunGenerateAndValidateTypes(
       "TensorFlowSessionFromFrozenGraphGenerator", extendable_options_,
@@ -211,7 +215,7 @@ TEST_F(TensorFlowSessionFromFrozenGraphGeneratorTest,
       tool::CreateTagMap({"STRING_MODEL_FILE_PATH:model_path"}).value());
   PacketSet output_side_packets(
       tool::CreateTagMap({"SESSION:session"}).value());
-  input_side_packets.Tag("STRING_MODEL_FILE_PATH") =
+  input_side_packets.Tag(kStringModelFilePathTag) =
       Adopt(new std::string(GetGraphDefPath()));
   absl::Status run_status = tool::RunGenerateAndValidateTypes(
       "TensorFlowSessionFromFrozenGraphGenerator", extendable_options_,
@@ -233,9 +237,9 @@ TEST_F(TensorFlowSessionFromFrozenGraphGeneratorTest,
   std::string serialized_graph_contents;
   MP_EXPECT_OK(mediapipe::file::GetContents(GetGraphDefPath(),
                                             &serialized_graph_contents));
-  input_side_packets.Tag("STRING_MODEL") =
+  input_side_packets.Tag(kStringModelTag) =
       Adopt(new std::string(serialized_graph_contents));
-  input_side_packets.Tag("STRING_MODEL_FILE_PATH") =
+  input_side_packets.Tag(kStringModelFilePathTag) =
       Adopt(new std::string(GetGraphDefPath()));
 
   absl::Status run_status = tool::RunGenerateAndValidateTypes(
@@ -258,9 +262,9 @@ TEST_F(TensorFlowSessionFromFrozenGraphGeneratorTest,
   std::string serialized_graph_contents;
   MP_EXPECT_OK(mediapipe::file::GetContents(GetGraphDefPath(),
                                             &serialized_graph_contents));
-  input_side_packets.Tag("STRING_MODEL") =
+  input_side_packets.Tag(kStringModelTag) =
       Adopt(new std::string(serialized_graph_contents));
-  input_side_packets.Tag("STRING_MODEL_FILE_PATH") =
+  input_side_packets.Tag(kStringModelFilePathTag) =
       Adopt(new std::string(GetGraphDefPath()));
   generator_options_->clear_graph_proto_path();
 

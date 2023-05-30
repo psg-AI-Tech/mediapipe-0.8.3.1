@@ -1,5 +1,6 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/framework/getting_started/gpu_support
 title: GPU Support
 parent: Getting Started
 nav_order: 7
@@ -11,6 +12,12 @@ nav_order: 7
 1. TOC
 {:toc}
 ---
+
+**Attention:** *Thanks for your interest in MediaPipe! We have moved to
+[https://developers.google.com/mediapipe](https://developers.google.com/mediapipe)
+as the primary developer documentation site for MediaPipe as of April 3, 2023.*
+
+----
 
 ## OpenGL ES Support
 
@@ -57,6 +64,21 @@ $ glxinfo | grep -i opengl
 OpenGL ES profile version string: OpenGL ES 3.2 NVIDIA 430.50
 OpenGL ES profile shading language version string: OpenGL ES GLSL ES 3.20
 OpenGL ES profile extensions:
+```
+
+If you have connected to your computer through SSH and find when you probe for
+GPU information you see the output:
+
+```bash
+glxinfo | grep -i opengl
+Error: unable to open display
+```
+
+Try re-establishing your SSH connection with the `-X` option and try again. For
+example:
+
+```bash
+ssh -X <user>@<host>
 ```
 
 *Notice the ES 3.20 text above.*

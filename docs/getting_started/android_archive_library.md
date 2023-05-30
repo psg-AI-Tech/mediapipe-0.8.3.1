@@ -1,9 +1,10 @@
 ---
-layout: default
+layout: forward
+target: https://developers.google.com/mediapipe/framework/getting_started/android_archive_library
 title: MediaPipe Android Archive
 parent: MediaPipe on Android
 grand_parent: Getting Started
-nav_order: 2
+nav_order: 3
 ---
 
 # MediaPipe Android Archive
@@ -12,6 +13,12 @@ nav_order: 2
 1. TOC
 {:toc}
 ---
+
+**Attention:** *Thanks for your interest in MediaPipe! We have moved to
+[https://developers.google.com/mediapipe](https://developers.google.com/mediapipe)
+as the primary developer documentation site for MediaPipe as of April 3, 2023.*
+
+----
 
 ***Experimental Only***
 
@@ -37,7 +44,7 @@ each project.
     load("//mediapipe/java/com/google/mediapipe:mediapipe_aar.bzl", "mediapipe_aar")
 
     mediapipe_aar(
-        name = "mp_face_detection_aar",
+        name = "mediapipe_face_detection",
         calculators = ["//mediapipe/graphs/face_detection:mobile_calculators"],
     )
     ```
@@ -45,26 +52,49 @@ each project.
 2.  Run the Bazel build command to generate the AAR.
 
     ```bash
-    bazel build -c opt --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
-        --fat_apk_cpu=arm64-v8a,armeabi-v7a --strip=ALWAYS \
-        //path/to/the/aar/build/file:aar_name
+    bazel build -c opt --strip=ALWAYS \
+        --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+        --fat_apk_cpu=arm64-v8a,armeabi-v7a \
+        --legacy_whole_archive=0 \
+        --features=-legacy_whole_archive \
+        --copt=-fvisibility=hidden \
+        --copt=-ffunction-sections \
+        --copt=-fdata-sections \
+        --copt=-fstack-protector \
+        --copt=-Oz \
+        --copt=-fomit-frame-pointer \
+        --copt=-DABSL_MIN_LOG_LEVEL=2 \
+        --linkopt=-Wl,--gc-sections,--strip-all \
+        //path/to/the/aar/build/file:aar_name.aar
     ```
 
-    For the face detection AAR target we made in the step 1, run:
+    For the face detection AAR target we made in step 1, run:
 
     ```bash
-    bazel build -c opt --host_crosstool_top=@bazel_tools//tools/cpp:toolchain --fat_apk_cpu=arm64-v8a,armeabi-v7a \
-        //mediapipe/examples/android/src/java/com/google/mediapipe/apps/aar_example:mp_face_detection_aar
+    bazel build -c opt --strip=ALWAYS \
+        --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+        --fat_apk_cpu=arm64-v8a,armeabi-v7a \
+        --legacy_whole_archive=0 \
+        --features=-legacy_whole_archive \
+        --copt=-fvisibility=hidden \
+        --copt=-ffunction-sections \
+        --copt=-fdata-sections \
+        --copt=-fstack-protector \
+        --copt=-Oz \
+        --copt=-fomit-frame-pointer \
+        --copt=-DABSL_MIN_LOG_LEVEL=2 \
+        --linkopt=-Wl,--gc-sections,--strip-all \
+        //mediapipe/examples/android/src/java/com/google/mediapipe/apps/aar_example:mediapipe_face_detection.aar
 
     # It should print:
-    # Target //mediapipe/examples/android/src/java/com/google/mediapipe/apps/aar_example:mp_face_detection_aar up-to-date:
-    # bazel-bin/mediapipe/examples/android/src/java/com/google/mediapipe/apps/aar_example/mp_face_detection_aar.aar
+    # Target //mediapipe/examples/android/src/java/com/google/mediapipe/apps/aar_example:mediapipe_face_detection.aar up-to-date:
+    # bazel-bin/mediapipe/examples/android/src/java/com/google/mediapipe/apps/aar_example/mediapipe_face_detection.aar
     ```
 
 3.  (Optional) Save the AAR to your preferred location.
 
     ```bash
-    cp bazel-bin/mediapipe/examples/android/src/java/com/google/mediapipe/apps/aar_example/mp_face_detection_aar.aar
+    cp bazel-bin/mediapipe/examples/android/src/java/com/google/mediapipe/apps/aar_example/mediapipe_face_detection.aar
     /absolute/path/to/your/preferred/location
     ```
 
@@ -75,11 +105,11 @@ each project.
 2.  Copy the AAR into app/libs.
 
     ```bash
-    cp bazel-bin/mediapipe/examples/android/src/java/com/google/mediapipe/apps/aar_example/mp_face_detection_aar.aar
+    cp bazel-bin/mediapipe/examples/android/src/java/com/google/mediapipe/apps/aar_example/mediapipe_face_detection.aar
     /path/to/your/app/libs/
     ```
 
-    ![Screenshot](../images/mobile/aar_location.png)
+    ![Screenshot](https://mediapipe.dev/images/mobile/aar_location.png)
 
 3.  Make app/src/main/assets and copy assets (graph, model, and etc) into
     app/src/main/assets.
@@ -89,32 +119,17 @@ each project.
     and copy
     [the binary graph](https://github.com/google/mediapipe/blob/master/mediapipe/examples/android/src/java/com/google/mediapipe/apps/facedetectiongpu/BUILD#L41)
     and
-    [the face detection tflite model](https://github.com/google/mediapipe/tree/master/mediapipe/modules/face_detection/face_detection_front.tflite).
+    [the face detection tflite model](https://github.com/google/mediapipe/tree/master/mediapipe/modules/face_detection/face_detection_short_range.tflite).
 
     ```bash
-    bazel build -c opt mediapipe/mediapipe/graphs/face_detection:mobile_gpu_binary_graph
-    cp bazel-bin/mediapipe/graphs/face_detection/mobile_gpu.binarypb /path/to/your/app/src/main/assets/
-    cp mediapipe/modules/face_detection/face_detection_front.tflite /path/to/your/app/src/main/assets/
+    bazel build -c opt mediapipe/graphs/face_detection:face_detection_mobile_gpu_binary_graph
+    cp bazel-bin/mediapipe/graphs/face_detection/face_detection_mobile_gpu.binarypb /path/to/your/app/src/main/assets/
+    cp mediapipe/modules/face_detection/face_detection_short_range.tflite /path/to/your/app/src/main/assets/
     ```
 
-    ![Screenshot](../images/mobile/assets_location.png)
+    ![Screenshot](https://mediapipe.dev/images/mobile/assets_location.png)
 
-4.  Make app/src/main/jniLibs and copy OpenCV JNI libraries into
-    app/src/main/jniLibs.
-
-    MediaPipe depends on OpenCV, you will need to copy the precompiled OpenCV so
-    files into app/src/main/jniLibs. You can download the official OpenCV
-    Android SDK from
-    [here](https://github.com/opencv/opencv/releases/download/3.4.3/opencv-3.4.3-android-sdk.zip)
-    and run:
-
-    ```bash
-    cp -R ~/Downloads/OpenCV-android-sdk/sdk/native/libs/arm* /path/to/your/app/src/main/jniLibs/
-    ```
-
-    ![Screenshot](../images/mobile/android_studio_opencv_location.png)
-
-5.  Modify app/build.gradle to add MediaPipe dependencies and MediaPipe AAR.
+4.  Modify app/build.gradle to add MediaPipe dependencies and MediaPipe AAR.
 
     ```
     dependencies {
@@ -125,21 +140,24 @@ each project.
         androidTestImplementation 'androidx.test.ext:junit:1.1.0'
         androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.1'
         // MediaPipe deps
-        implementation 'com.google.flogger:flogger:0.3.1'
-        implementation 'com.google.flogger:flogger-system-backend:0.3.1'
-        implementation 'com.google.code.findbugs:jsr305:3.0.2'
+        implementation 'com.google.flogger:flogger:latest.release'
+        implementation 'com.google.flogger:flogger-system-backend:latest.release'
+        implementation 'com.google.code.findbugs:jsr305:latest.release'
         implementation 'com.google.guava:guava:27.0.1-android'
-        implementation 'com.google.guava:guava:27.0.1-android'
-        implementation 'com.google.protobuf:protobuf-java:3.11.4'
+        implementation 'com.google.protobuf:protobuf-javalite:3.19.1'
         // CameraX core library
         def camerax_version = "1.0.0-beta10"
         implementation "androidx.camera:camera-core:$camerax_version"
         implementation "androidx.camera:camera-camera2:$camerax_version"
         implementation "androidx.camera:camera-lifecycle:$camerax_version"
+        // AutoValue
+        def auto_value_version = "1.8.1"
+        implementation "com.google.auto.value:auto-value-annotations:$auto_value_version"
+        annotationProcessor "com.google.auto.value:auto-value:$auto_value_version"
     }
     ```
 
-6.  Follow our Android app examples to use MediaPipe in Android Studio for your
+5.  Follow our Android app examples to use MediaPipe in Android Studio for your
     use case. If you are looking for an example, a face detection example can be
     found
     [here](https://github.com/jiuqiant/mediapipe_face_detection_aar_example) and

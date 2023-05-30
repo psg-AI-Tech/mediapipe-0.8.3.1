@@ -19,14 +19,76 @@
 
 #include "absl/base/macros.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/deps/registration.h"
+#include "mediapipe/framework/graph_service.h"
+#include "mediapipe/framework/graph_service_manager.h"
 #include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/statusor.h"
 #include "mediapipe/framework/tool/calculator_graph_template.pb.h"
 #include "mediapipe/framework/tool/options_util.h"
 
 namespace mediapipe {
+
+class SubgraphContext {
+ public:
+  SubgraphContext() : SubgraphContext(nullptr, nullptr) {}
+  // @node and/or @service_manager can be nullptr.
+  SubgraphContext(CalculatorGraphConfig::Node* node,
+                  const GraphServiceManager* service_manager)
+      : default_node_(node ? absl::nullopt
+                           : absl::optional<CalculatorGraphConfig::Node>(
+                                 CalculatorGraphConfig::Node())),
+        original_node_(node ? *node : default_node_.value()),
+        default_service_manager_(
+            service_manager
+                ? absl::nullopt
+                : absl::optional<GraphServiceManager>(GraphServiceManager())),
+        service_manager_(service_manager ? *service_manager
+                                         : default_service_manager_.value()),
+        options_map_(
+            std::move(tool::MutableOptionsMap().Initialize(original_node_))) {}
+
+  template <typename T>
+  const T& Options() {
+    return options_map_.Get<T>();
+  }
+
+  template <typename T>
+  T* MutableOptions() {
+    return options_map_.GetMutable<T>();
+  }
+
+  template <typename T>
+  bool HasOptions() {
+    return options_map_.Has<T>();
+  }
+
+  const CalculatorGraphConfig::Node& OriginalNode() const {
+    return original_node_;
+  }
+
+  template <typename T>
+  ServiceBinding<T> Service(const GraphService<T>& service) const {
+    return ServiceBinding<T>(service_manager_.GetServiceObject(service));
+  }
+
+ private:
+  // Populated if node is not provided during construction.
+  absl::optional<CalculatorGraphConfig::Node> default_node_;
+
+  CalculatorGraphConfig::Node& original_node_;
+
+  // Populated if service manager is not provided during construction.
+  const absl::optional<GraphServiceManager> default_service_manager_;
+
+  const GraphServiceManager& service_manager_;
+
+  tool::MutableOptionsMap options_map_;
+};
 
 // Instances of this class are responsible for providing a subgraph config.
 // They are only used during graph construction. They do not stay alive once
@@ -36,18 +98,35 @@ class Subgraph {
   using SubgraphOptions = CalculatorGraphConfig::Node;
   Subgraph();
   virtual ~Subgraph();
+
   // Returns the config to use for one instantiation of the subgraph. The
   // nodes and generators in this config will replace the subgraph node in
   // the parent graph.
-  // Subclasses may use the options argument to parameterize the config.
+  // Subclasses may use `SubgraphContext*` param to parameterize the config.
   // TODO: make this static?
+  virtual absl::StatusOr<CalculatorGraphConfig> GetConfig(SubgraphContext* sc) {
+    if (sc == nullptr) {
+      return GetConfig(SubgraphOptions{});
+    }
+    return GetConfig(sc->OriginalNode());
+  }
+
+  // Kept for backward compatibility - please override `GetConfig` taking
+  // `SubgraphContext*` param.
   virtual absl::StatusOr<CalculatorGraphConfig> GetConfig(
-      const SubgraphOptions& options) = 0;
+      const SubgraphOptions& options) {
+    return absl::UnimplementedError("Not implemented.");
+  }
 
   // Returns options of a specific type.
   template <typename T>
   static T GetOptions(const Subgraph::SubgraphOptions& supgraph_options) {
     return tool::OptionsMap().Initialize(supgraph_options).Get<T>();
+  }
+
+  template <typename T>
+  static bool HasOptions(const Subgraph::SubgraphOptions& supgraph_options) {
+    return tool::OptionsMap().Initialize(supgraph_options).Has<T>();
   }
 
   // Returns the CalculatorGraphConfig::Node specifying the subgraph.
@@ -119,8 +198,8 @@ class GraphRegistry {
 
   // Returns the specified graph config.
   absl::StatusOr<CalculatorGraphConfig> CreateByName(
-      const std::string& ns, const std::string& type_name,
-      const Subgraph::SubgraphOptions* options = nullptr) const;
+      absl::string_view ns, absl::string_view type_name,
+      SubgraphContext* context = nullptr) const;
 
   static GraphRegistry global_graph_registry;
 

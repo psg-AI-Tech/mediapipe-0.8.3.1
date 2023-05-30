@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/container/btree_set.h"
+#include "absl/flags/flag.h"
 #include "absl/strings/string_view.h"
 #include "mediapipe/examples/desktop/autoflip/calculators/shot_boundary_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -19,7 +21,6 @@
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/image_frame_opencv.h"
-#include "mediapipe/framework/port/commandlineflags.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
@@ -30,18 +31,18 @@
 #include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/status_matchers.h"
 
-using mediapipe::Adopt;
 using mediapipe::CalculatorGraphConfig;
 using mediapipe::CalculatorRunner;
 using mediapipe::ImageFormat;
 using mediapipe::ImageFrame;
 using mediapipe::PacketTypeSet;
-using mediapipe::ParseTextProtoOrDie;
-using mediapipe::Timestamp;
 
 namespace mediapipe {
 namespace autoflip {
 namespace {
+
+constexpr char kIsShotChangeTag[] = "IS_SHOT_CHANGE";
+constexpr char kVideoTag[] = "VIDEO";
 
 const char kConfig[] = R"(
     calculator: "ShotBoundaryCalculator"
@@ -51,7 +52,8 @@ const char kConfig[] = R"(
 const int kTestFrameWidth = 640;
 const int kTestFrameHeight = 480;
 
-void AddFrames(const int number_of_frames, const std::set<int>& skip_frames,
+void AddFrames(const int number_of_frames,
+               const absl::btree_set<int>& skip_frames,
                CalculatorRunner* runner) {
   cv::Mat image =
       cv::imread(file::JoinPath("./",
@@ -70,12 +72,13 @@ void AddFrames(const int number_of_frames, const std::set<int>& skip_frames,
     if (skip_frames.count(i) < 1) {
       sub_image.copyTo(frame_area);
     }
-    runner->MutableInputs()->Tag("VIDEO").packets.push_back(
+    runner->MutableInputs()->Tag(kVideoTag).packets.push_back(
         Adopt(input_frame.release()).At(Timestamp(i * 1000000)));
   }
 }
 
-void CheckOutput(const int number_of_frames, const std::set<int>& shot_frames,
+void CheckOutput(const int number_of_frames,
+                 const absl::btree_set<int>& shot_frames,
                  const std::vector<Packet>& output_packets) {
   ASSERT_EQ(number_of_frames, output_packets.size());
   for (int i = 0; i < number_of_frames; i++) {
@@ -97,7 +100,7 @@ TEST(ShotBoundaryCalculatorTest, NoShotChange) {
 
   AddFrames(10, {}, runner.get());
   MP_ASSERT_OK(runner->Run());
-  CheckOutput(10, {}, runner->Outputs().Tag("IS_SHOT_CHANGE").packets);
+  CheckOutput(10, {}, runner->Outputs().Tag(kIsShotChangeTag).packets);
 }
 
 TEST(ShotBoundaryCalculatorTest, ShotChangeSingle) {
@@ -110,7 +113,7 @@ TEST(ShotBoundaryCalculatorTest, ShotChangeSingle) {
 
   AddFrames(20, {10}, runner.get());
   MP_ASSERT_OK(runner->Run());
-  CheckOutput(20, {10}, runner->Outputs().Tag("IS_SHOT_CHANGE").packets);
+  CheckOutput(20, {10}, runner->Outputs().Tag(kIsShotChangeTag).packets);
 }
 
 TEST(ShotBoundaryCalculatorTest, ShotChangeDouble) {
@@ -123,7 +126,7 @@ TEST(ShotBoundaryCalculatorTest, ShotChangeDouble) {
 
   AddFrames(20, {14, 17}, runner.get());
   MP_ASSERT_OK(runner->Run());
-  CheckOutput(20, {14, 17}, runner->Outputs().Tag("IS_SHOT_CHANGE").packets);
+  CheckOutput(20, {14, 17}, runner->Outputs().Tag(kIsShotChangeTag).packets);
 }
 
 TEST(ShotBoundaryCalculatorTest, ShotChangeFiltered) {
@@ -140,7 +143,7 @@ TEST(ShotBoundaryCalculatorTest, ShotChangeFiltered) {
 
   AddFrames(24, {16, 19}, runner.get());
   MP_ASSERT_OK(runner->Run());
-  CheckOutput(24, {16}, runner->Outputs().Tag("IS_SHOT_CHANGE").packets);
+  CheckOutput(24, {16}, runner->Outputs().Tag(kIsShotChangeTag).packets);
 }
 
 TEST(ShotBoundaryCalculatorTest, ShotChangeSingleOnOnChange) {
@@ -153,7 +156,7 @@ TEST(ShotBoundaryCalculatorTest, ShotChangeSingleOnOnChange) {
 
   AddFrames(20, {15}, runner.get());
   MP_ASSERT_OK(runner->Run());
-  auto output_packets = runner->Outputs().Tag("IS_SHOT_CHANGE").packets;
+  auto output_packets = runner->Outputs().Tag(kIsShotChangeTag).packets;
   ASSERT_EQ(output_packets.size(), 1);
   ASSERT_EQ(output_packets[0].Get<bool>(), true);
   ASSERT_EQ(output_packets[0].Timestamp().Value(), 15000000);

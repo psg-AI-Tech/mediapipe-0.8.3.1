@@ -18,12 +18,17 @@ licenses(["notice"])
 
 package(default_visibility = ["//visibility:public"])
 
+# This is a protobuf alias.
 mediapipe_proto_library(
     name = "gl_animation_overlay_calculator_proto",
     srcs = ["gl_animation_overlay_calculator.proto"],
+    def_options_lib = False,
     visibility = ["//visibility:public"],
+    exports = [
+        "//mediapipe/gpu:gl_animation_overlay_calculator_proto",
+    ],
     deps = [
-        "//mediapipe/framework:calculator_proto",
+        "//mediapipe/gpu:gl_animation_overlay_calculator_proto",
     ],
 )
 
@@ -89,7 +94,7 @@ cc_library(
         "//mediapipe/util:color_cc_proto",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen",
+        "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
 )

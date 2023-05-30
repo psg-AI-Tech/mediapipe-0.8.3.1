@@ -26,6 +26,10 @@ namespace {
 
 namespace tf = ::tensorflow;
 
+constexpr char kSingleIntTag[] = "SINGLE_INT";
+constexpr char kTensorOutTag[] = "TENSOR_OUT";
+constexpr char kVectorIntTag[] = "VECTOR_INT";
+
 class VectorIntToTensorCalculatorTest : public ::testing::Test {
  protected:
   void SetUpRunner(
@@ -59,15 +63,15 @@ class VectorIntToTensorCalculatorTest : public ::testing::Test {
       }
     }
 
-    const int64 time = 1234;
+    const int64_t time = 1234;
     runner_->MutableInputs()
-        ->Tag("VECTOR_INT")
+        ->Tag(kVectorIntTag)
         .packets.push_back(Adopt(input.release()).At(Timestamp(time)));
 
     EXPECT_TRUE(runner_->Run().ok());
 
     const std::vector<Packet>& output_packets =
-        runner_->Outputs().Tag("TENSOR_OUT").packets;
+        runner_->Outputs().Tag(kTensorOutTag).packets;
     EXPECT_EQ(1, output_packets.size());
     EXPECT_EQ(time, output_packets[0].Timestamp().Value());
     const tf::Tensor& output_tensor = output_packets[0].Get<tf::Tensor>();
@@ -93,22 +97,22 @@ class VectorIntToTensorCalculatorTest : public ::testing::Test {
 TEST_F(VectorIntToTensorCalculatorTest, TestSingleValue) {
   SetUpRunner(VectorIntToTensorCalculatorOptions::INPUT_1D,
               tensorflow::DT_INT32, false, true);
-  const int64 time = 1234;
+  const int64_t time = 1234;
   runner_->MutableInputs()
-      ->Tag("SINGLE_INT")
+      ->Tag(kSingleIntTag)
       .packets.push_back(MakePacket<int>(1).At(Timestamp(time)));
 
   EXPECT_TRUE(runner_->Run().ok());
 
   const std::vector<Packet>& output_packets =
-      runner_->Outputs().Tag("TENSOR_OUT").packets;
+      runner_->Outputs().Tag(kTensorOutTag).packets;
   EXPECT_EQ(1, output_packets.size());
   EXPECT_EQ(time, output_packets[0].Timestamp().Value());
   const tf::Tensor& output_tensor = output_packets[0].Get<tf::Tensor>();
 
   EXPECT_EQ(1, output_tensor.dims());
   EXPECT_EQ(tf::DT_INT32, output_tensor.dtype());
-  const auto vec = output_tensor.vec<int32>();
+  const auto vec = output_tensor.vec<int32_t>();
   EXPECT_EQ(1, vec(0));
 }
 
@@ -119,22 +123,22 @@ TEST_F(VectorIntToTensorCalculatorTest, TesOneDim) {
   for (int i = 0; i < 5; ++i) {
     input->at(i) = i;
   }
-  const int64 time = 1234;
+  const int64_t time = 1234;
   runner_->MutableInputs()
-      ->Tag("VECTOR_INT")
+      ->Tag(kVectorIntTag)
       .packets.push_back(Adopt(input.release()).At(Timestamp(time)));
 
   EXPECT_TRUE(runner_->Run().ok());
 
   const std::vector<Packet>& output_packets =
-      runner_->Outputs().Tag("TENSOR_OUT").packets;
+      runner_->Outputs().Tag(kTensorOutTag).packets;
   EXPECT_EQ(1, output_packets.size());
   EXPECT_EQ(time, output_packets[0].Timestamp().Value());
   const tf::Tensor& output_tensor = output_packets[0].Get<tf::Tensor>();
 
   EXPECT_EQ(1, output_tensor.dims());
   EXPECT_EQ(tf::DT_INT32, output_tensor.dtype());
-  const auto vec = output_tensor.vec<int32>();
+  const auto vec = output_tensor.vec<int32_t>();
 
   for (int i = 0; i < 5; ++i) {
     EXPECT_EQ(i, vec(i));
@@ -150,15 +154,15 @@ TEST_F(VectorIntToTensorCalculatorTest, TestTwoDims) {
 TEST_F(VectorIntToTensorCalculatorTest, TestInt64) {
   SetUpRunner(VectorIntToTensorCalculatorOptions::INPUT_1D,
               tensorflow::DT_INT64, false, true);
-  const int64 time = 1234;
+  const int64_t time = 1234;
   runner_->MutableInputs()
-      ->Tag("SINGLE_INT")
+      ->Tag(kSingleIntTag)
       .packets.push_back(MakePacket<int>(1LL << 31).At(Timestamp(time)));
 
   EXPECT_TRUE(runner_->Run().ok());
 
   const std::vector<Packet>& output_packets =
-      runner_->Outputs().Tag("TENSOR_OUT").packets;
+      runner_->Outputs().Tag(kTensorOutTag).packets;
   EXPECT_EQ(1, output_packets.size());
   EXPECT_EQ(time, output_packets[0].Timestamp().Value());
   const tf::Tensor& output_tensor = output_packets[0].Get<tf::Tensor>();
@@ -177,22 +181,22 @@ TEST_F(VectorIntToTensorCalculatorTest, TestUint8) {
   for (int i = 0; i < 5; ++i) {
     input->at(i) = i;
   }
-  const int64 time = 1234;
+  const int64_t time = 1234;
   runner_->MutableInputs()
-      ->Tag("VECTOR_INT")
+      ->Tag(kVectorIntTag)
       .packets.push_back(Adopt(input.release()).At(Timestamp(time)));
 
   EXPECT_TRUE(runner_->Run().ok());
 
   const std::vector<Packet>& output_packets =
-      runner_->Outputs().Tag("TENSOR_OUT").packets;
+      runner_->Outputs().Tag(kTensorOutTag).packets;
   EXPECT_EQ(1, output_packets.size());
   EXPECT_EQ(time, output_packets[0].Timestamp().Value());
   const tf::Tensor& output_tensor = output_packets[0].Get<tf::Tensor>();
 
   EXPECT_EQ(1, output_tensor.dims());
   EXPECT_EQ(tf::DT_UINT8, output_tensor.dtype());
-  const auto vec = output_tensor.vec<uint8>();
+  const auto vec = output_tensor.vec<uint8_t>();
 
   for (int i = 0; i < 5; ++i) {
     EXPECT_EQ(i, vec(i));

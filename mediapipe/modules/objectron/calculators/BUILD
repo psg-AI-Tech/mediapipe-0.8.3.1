@@ -34,6 +34,7 @@ mediapipe_proto_library(
 mediapipe_proto_library(
     name = "annotation_proto",
     srcs = ["annotation_data.proto"],
+    def_options_lib = False,
     visibility = ["//visibility:public"],
     deps = [
         ":a_r_capture_metadata_proto",
@@ -153,6 +154,22 @@ cc_library(
 )
 
 cc_library(
+    name = "epnp",
+    srcs = [
+        "epnp.cc",
+    ],
+    hdrs = [
+        "epnp.h",
+    ],
+    deps = [
+        "//mediapipe/framework/port:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
     name = "decoder",
     srcs = [
         "decoder.cc",
@@ -164,12 +181,13 @@ cc_library(
         ":annotation_cc_proto",
         ":belief_decoder_config_cc_proto",
         ":box",
+        ":epnp",
         "//mediapipe/framework/port:logging",
         "//mediapipe/framework/port:opencv_core",
         "//mediapipe/framework/port:opencv_imgproc",
         "//mediapipe/framework/port:status",
         "@com_google_absl//absl/status",
-        "@eigen_archive//:eigen",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -205,7 +223,7 @@ cc_library(
         ":annotation_cc_proto",
         ":object_cc_proto",
         "//mediapipe/framework/port:logging",
-        "@eigen_archive//:eigen",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -257,13 +275,12 @@ cc_library(
         ":tflite_tensors_to_objects_calculator_cc_proto",
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework/deps:file_path",
-        "//mediapipe/framework/formats:detection_cc_proto",
         "//mediapipe/framework/port:opencv_core",
         "//mediapipe/framework/port:ret_check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@eigen_archive//:eigen",
+        "@eigen_archive//:eigen3",
         "@org_tensorflow//tensorflow/lite:framework",
     ],
     alwayslink = 1,
@@ -281,13 +298,13 @@ cc_library(
         ":tensors_to_objects_calculator_cc_proto",
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework/deps:file_path",
-        "//mediapipe/framework/formats:detection_cc_proto",
+        "//mediapipe/framework/formats:tensor",
         "//mediapipe/framework/port:opencv_core",
         "//mediapipe/framework/port:ret_check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@eigen_archive//:eigen",
+        "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
 )
@@ -298,19 +315,17 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":annotation_cc_proto",
-        ":belief_decoder_config_cc_proto",
         ":decoder",
         ":lift_2d_frame_annotation_to_3d_calculator_cc_proto",
         ":tensor_util",
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework/deps:file_path",
-        "//mediapipe/framework/formats:detection_cc_proto",
         "//mediapipe/framework/port:opencv_core",
         "//mediapipe/framework/port:ret_check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@eigen_archive//:eigen",
+        "@eigen_archive//:eigen3",
         "@org_tensorflow//tensorflow/lite:framework",
     ],
     alwayslink = 1,
@@ -327,7 +342,7 @@ cc_library(
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:status",
         "@com_google_absl//absl/memory",
-        "@eigen_archive//:eigen",
+        "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
 )
@@ -362,6 +377,23 @@ cc_library(
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
+)
+
+cc_test(
+    name = "filter_detection_calculator_test",
+    srcs = ["filter_detection_calculator_test.cc"],
+    deps = [
+        ":filter_detection_calculator",  # build_cleaner: keep
+        "//mediapipe/framework:calculator_cc_proto",
+        "//mediapipe/framework:calculator_options_cc_proto",
+        "//mediapipe/framework:calculator_runner",
+        "//mediapipe/framework:packet",
+        "//mediapipe/framework:timestamp",
+        "//mediapipe/framework/formats:detection_cc_proto",
+        "//mediapipe/framework/port:parse_text_proto",
+        "//mediapipe/util:packet_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_test(

@@ -22,6 +22,7 @@
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/vector.h"
 #include "mediapipe/util/color.pb.h"
+#include "mediapipe/util/render_data.pb.h"
 
 namespace mediapipe {
 namespace {
@@ -56,8 +57,8 @@ bool NormalizedtoPixelCoordinates(double normalized_x, double normalized_y,
     VLOG(1) << "Normalized coordinates must be between 0.0 and 1.0";
   }
 
-  *x_px = static_cast<int32>(round(normalized_x * image_width));
-  *y_px = static_cast<int32>(round(normalized_y * image_height));
+  *x_px = static_cast<int32_t>(round(normalized_x * image_width));
+  *y_px = static_cast<int32_t>(round(normalized_y * image_height));
 
   return true;
 }
@@ -112,6 +113,8 @@ void AnnotationRenderer::RenderDataOnImage(const RenderData& render_data) {
       DrawGradientLine(annotation);
     } else if (annotation.data_case() == RenderAnnotation::kArrow) {
       DrawArrow(annotation);
+    } else if (annotation.data_case() == RenderAnnotation::kScribble) {
+      DrawScribble(annotation);
     } else {
       LOG(FATAL) << "Unknown annotation type: " << annotation.data_case();
     }
@@ -173,6 +176,18 @@ void AnnotationRenderer::DrawRectangle(const RenderAnnotation& annotation) {
   } else {
     cv::Rect rect(left, top, right - left, bottom - top);
     cv::rectangle(mat_image_, rect, color, thickness);
+  }
+  if (rectangle.has_top_left_thickness()) {
+    const auto& rect = RectangleToOpenCVRotatedRect(left, top, right, bottom,
+                                                    rectangle.rotation());
+    const int kNumVertices = 4;
+    cv::Point2f vertices[kNumVertices];
+    rect.points(vertices);
+    const int top_left_thickness =
+        ClampThickness(round(rectangle.top_left_thickness() * scale_factor_));
+    cv::ellipse(mat_image_, vertices[1],
+                cv::Size(top_left_thickness, top_left_thickness), 0.0, 0, 360,
+                color, -1);
   }
 }
 
@@ -430,7 +445,11 @@ void AnnotationRenderer::DrawArrow(const RenderAnnotation& annotation) {
 }
 
 void AnnotationRenderer::DrawPoint(const RenderAnnotation& annotation) {
-  const auto& point = annotation.point();
+  DrawPoint(annotation.point(), annotation);
+}
+
+void AnnotationRenderer::DrawPoint(const RenderAnnotation::Point& point,
+                                   const RenderAnnotation& annotation) {
   int x = -1;
   int y = -1;
   if (point.normalized()) {
@@ -446,6 +465,12 @@ void AnnotationRenderer::DrawPoint(const RenderAnnotation& annotation) {
   const int thickness =
       ClampThickness(round(annotation.thickness() * scale_factor_));
   cv::circle(mat_image_, point_to_draw, thickness, color, -1);
+}
+
+void AnnotationRenderer::DrawScribble(const RenderAnnotation& annotation) {
+  for (const RenderAnnotation::Point& point : annotation.scribble().point()) {
+    DrawPoint(point, annotation);
+  }
 }
 
 void AnnotationRenderer::DrawLine(const RenderAnnotation& annotation) {
@@ -540,6 +565,16 @@ void AnnotationRenderer::DrawText(const RenderAnnotation& annotation) {
     origin.y += text_size.height / 2;
   }
 
+  if (text.outline_thickness() > 0.0) {
+    const int background_thickness = ClampThickness(
+        round((annotation.thickness() + 2.0 * text.outline_thickness()) *
+              scale_factor_));
+    const cv::Scalar outline_color =
+        MediapipeColorToOpenCVColor(text.outline_color());
+    cv::putText(mat_image_, text.display_text(), origin, font_face, font_scale,
+                outline_color, background_thickness, /*lineType=*/8,
+                /*bottomLeftOrigin=*/flip_text_vertically_);
+  }
   cv::putText(mat_image_, text.display_text(), origin, font_face, font_scale,
               color, thickness, /*lineType=*/8,
               /*bottomLeftOrigin=*/flip_text_vertically_);

@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """This script is used to set up automatic provisioning for iOS examples.
 
 It scans the provisioning profiles used by Xcode, looking for one matching the
@@ -29,6 +28,7 @@ import os
 import plistlib
 import re
 import subprocess
+from typing import Optional
 import uuid
 
 # This script is meant to be located in the MediaPipe iOS examples directory
@@ -79,7 +79,7 @@ def configure_bundle_id_prefix(
   return bundle_id_prefix
 
 
-def get_app_id(profile_path) -> str:
+def get_app_id(profile_path) -> Optional[str]:
   try:
     plist = subprocess.check_output(
         ["security", "cms", "-D", "-i", profile_path])
@@ -147,11 +147,17 @@ def main():
       f"Looking for profiles for app ids with prefix '{bundle_id_prefix}' in '{profile_dir}'"
   )
 
+  profiles_found = False
   for name in os.listdir(profile_dir):
     if not name.endswith(".mobileprovision"):
       continue
+    profiles_found = True
     profile_path = os.path.join(profile_dir, name)
     process_profile(profile_path, our_app_id_re)
+
+  if not profiles_found:
+    print("Error: Unable to find any provisioning profiles " +
+          f"(*.mobileprovision files) in '{profile_dir}'")
 
 
 if __name__ == "__main__":

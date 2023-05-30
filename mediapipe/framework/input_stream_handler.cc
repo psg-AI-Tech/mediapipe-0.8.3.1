@@ -21,7 +21,6 @@
 #include "mediapipe/framework/port/ret_check.h"
 
 namespace mediapipe {
-
 using SyncSet = InputStreamHandler::SyncSet;
 
 absl::Status InputStreamHandler::InitializeInputStreamManagers(
@@ -51,15 +50,18 @@ absl::Status InputStreamHandler::SetupInputShards(
   return absl::OkStatus();
 }
 
-std::vector<std::pair<std::string, int>>
+std::vector<std::tuple<std::string, int, int, Timestamp>>
 InputStreamHandler::GetMonitoringInfo() {
-  std::vector<std::pair<std::string, int>> monitoring_info_vector;
+  std::vector<std::tuple<std::string, int, int, Timestamp>>
+      monitoring_info_vector;
   for (auto& stream : input_stream_managers_) {
     if (!stream) {
       continue;
     }
     monitoring_info_vector.emplace_back(
-        std::pair<std::string, int>(stream->Name(), stream->QueueSize()));
+        std::tuple<std::string, int, int, Timestamp>(
+            stream->Name(), stream->QueueSize(), stream->NumPacketsAdded(),
+            stream->MinTimestampOrBound(nullptr)));
   }
   return monitoring_info_vector;
 }
@@ -352,7 +354,9 @@ NodeReadiness SyncSet::GetReadiness(Timestamp* min_stream_timestamp) {
     }
   }
   *min_stream_timestamp = std::min(min_packet, min_bound);
-  if (*min_stream_timestamp == Timestamp::Done()) {
+  if (*min_stream_timestamp >= Timestamp::OneOverPostStream()) {
+    // Either OneOverPostStream or Done indicates no more packets.
+    *min_stream_timestamp = Timestamp::Done();
     last_processed_ts_ = Timestamp::Done().PreviousAllowedInStream();
     return NodeReadiness::kReadyForClose;
   }
@@ -365,9 +369,14 @@ NodeReadiness SyncSet::GetReadiness(Timestamp* min_stream_timestamp) {
     }
   } else {
     // Any unprocessed input_ts can be processed.
-    // Note that (min_bound - 1) is the highest fully settled timestamp.
-    Timestamp input_timestamp =
-        std::min(min_packet, min_bound.PreviousAllowedInStream());
+    // The settled timestamp is the highest timestamp at which no future packets
+    // can arrive. Timestamp::PostStream is treated specially because it is
+    // omitted by Timestamp::PreviousAllowedInStream.
+    Timestamp settled =
+        (min_packet == Timestamp::PostStream() && min_bound > min_packet)
+            ? min_packet
+            : min_bound.PreviousAllowedInStream();
+    Timestamp input_timestamp = std::min(min_packet, settled);
     if (input_timestamp >
         std::max(last_processed_ts_, Timestamp::Unstarted())) {
       *min_stream_timestamp = input_timestamp;

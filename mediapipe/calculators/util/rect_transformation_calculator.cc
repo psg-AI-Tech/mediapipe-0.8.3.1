@@ -28,6 +28,9 @@ constexpr char kRectTag[] = "RECT";
 constexpr char kRectsTag[] = "RECTS";
 constexpr char kImageSizeTag[] = "IMAGE_SIZE";
 
+using ::mediapipe::NormalizedRect;
+using ::mediapipe::Rect;
+
 // Wraps around an angle in radians to within -M_PI and M_PI.
 inline float NormalizeRadians(float angle) {
   return angle - 2 * M_PI * std::floor((angle - (-M_PI)) / (2 * M_PI));
@@ -36,7 +39,7 @@ inline float NormalizeRadians(float angle) {
 }  // namespace
 
 // Performs geometric transformation to the input Rect or NormalizedRect,
-// correpsonding to input stream RECT or NORM_RECT respectively. When the input
+// corresponding to input stream RECT or NORM_RECT respectively. When the input
 // is NORM_RECT, an addition input stream IMAGE_SIZE is required, which is a
 // std::pair<int, int> representing the image width and height.
 //
@@ -130,8 +133,8 @@ absl::Status RectTransformationCalculator::Process(CalculatorContext* cc) {
     }
     cc->Outputs().Index(0).Add(output_rects.release(), cc->InputTimestamp());
   }
-  if (cc->Inputs().HasTag(kNormRectTag) &&
-      !cc->Inputs().Tag(kNormRectTag).IsEmpty()) {
+  if (HasTagValue(cc->Inputs(), kNormRectTag) &&
+      HasTagValue(cc->Inputs(), kImageSizeTag)) {
     auto rect = cc->Inputs().Tag(kNormRectTag).Get<NormalizedRect>();
     const auto& image_size =
         cc->Inputs().Tag(kImageSizeTag).Get<std::pair<int, int>>();
@@ -139,8 +142,8 @@ absl::Status RectTransformationCalculator::Process(CalculatorContext* cc) {
     cc->Outputs().Index(0).AddPacket(
         MakePacket<NormalizedRect>(rect).At(cc->InputTimestamp()));
   }
-  if (cc->Inputs().HasTag(kNormRectsTag) &&
-      !cc->Inputs().Tag(kNormRectsTag).IsEmpty()) {
+  if (HasTagValue(cc->Inputs(), kNormRectsTag) &&
+      HasTagValue(cc->Inputs(), kImageSizeTag)) {
     auto rects =
         cc->Inputs().Tag(kNormRectsTag).Get<std::vector<NormalizedRect>>();
     const auto& image_size =

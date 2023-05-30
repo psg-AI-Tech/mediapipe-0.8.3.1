@@ -24,7 +24,7 @@ load(
 
 licenses(["notice"])
 
-MIN_IOS_VERSION = "10.0"
+MIN_IOS_VERSION = "11.0"
 
 alias(
     name = "holistictrackinggpu",
@@ -55,14 +55,14 @@ objc_library(
     name = "HolisticTrackingGpuAppLibrary",
     data = [
         "//mediapipe/graphs/holistic_tracking:holistic_tracking_gpu.binarypb",
-        "//mediapipe/modules/face_detection:face_detection_front.tflite",
+        "//mediapipe/modules/face_detection:face_detection_short_range.tflite",
         "//mediapipe/modules/face_landmark:face_landmark.tflite",
-        "//mediapipe/modules/hand_landmark:hand_landmark.tflite",
+        "//mediapipe/modules/hand_landmark:hand_landmark_full.tflite",
+        "//mediapipe/modules/hand_landmark:hand_landmark_lite.tflite",
         "//mediapipe/modules/hand_landmark:handedness.txt",
         "//mediapipe/modules/holistic_landmark:hand_recrop.tflite",
         "//mediapipe/modules/pose_detection:pose_detection.tflite",
-        "//mediapipe/modules/pose_landmark:pose_landmark_full_body.tflite",
-        "//mediapipe/modules/pose_landmark:pose_landmark_upper_body.tflite",
+        "//mediapipe/modules/pose_landmark:pose_landmark_full.tflite",
     ],
     deps = [
         "//mediapipe/examples/ios/common:CommonMediaPipeAppLibrary",

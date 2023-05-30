@@ -18,6 +18,9 @@ package mediapipe;
 
 import "mediapipe/util/color.proto";
 
+option java_package = "com.google.mediapipe.util.proto";
+option java_outer_classname = "RenderDataProto";
+
 // A RenderData is a collection of multiple RenderAnnotations. For example, a
 // face can be rendered using a group of annotations: a bounding box around the
 // face (rectangle) and annotations for various face parts such as eyes, nose
@@ -46,6 +49,8 @@ message RenderAnnotation {
     optional double bottom = 4;
     optional bool normalized = 5 [default = false];
     optional double rotation = 6;  // Rotation in radians.
+    // Radius of top left corner circle.
+    optional double top_left_thickness = 7;
   }
 
   message FilledRectangle {
@@ -126,6 +131,10 @@ message RenderAnnotation {
     optional Color color2 = 7;
   }
 
+  message Scribble {
+    repeated Point point = 1;
+  }
+
   message Arrow {
     // The arrow head will be drawn at (x_end, y_end).
     optional double x_start = 1;
@@ -166,6 +175,12 @@ message RenderAnnotation {
     // [left, baseline] represent  [center_x, center_y].
     optional bool center_horizontally = 7 [default = false];
     optional bool center_vertically = 8 [default = false];
+
+    // Thickness of the text outline.
+    optional double outline_thickness = 11 [default = 0.0];
+
+    // Color of the text outline.
+    optional Color outline_color = 12;
   }
 
   // The RenderAnnotation can be one of the below formats.
@@ -181,6 +196,7 @@ message RenderAnnotation {
     RoundedRectangle rounded_rectangle = 9;
     FilledRoundedRectangle filled_rounded_rectangle = 10;
     GradientLine gradient_line = 14;
+    Scribble scribble = 15;
   }
 
   // Thickness for drawing the annotation.

@@ -24,7 +24,7 @@
 
 namespace mediapipe {
 
-// Calculator that converts a std::string into an integer type, or fails if the
+// Calculator that converts a string into an integer type, or fails if the
 // conversion is not possible.
 //
 // Example config:
@@ -47,7 +47,7 @@ class StringToIntCalculatorTemplate : public CalculatorBase {
     if (!absl::SimpleAtoi(cc->InputSidePackets().Index(0).Get<std::string>(),
                           &number)) {
       return absl::InvalidArgumentError(
-          "The std::string could not be parsed as an integer.");
+          "The string could not be parsed as an integer.");
     }
     cc->OutputSidePackets().Index(0).Set(MakePacket<IntType>(number));
     return absl::OkStatus();
@@ -64,16 +64,16 @@ REGISTER_CALCULATOR(StringToIntCalculator);
 using StringToUintCalculator = StringToIntCalculatorTemplate<unsigned int>;
 REGISTER_CALCULATOR(StringToUintCalculator);
 
-using StringToInt32Calculator = StringToIntCalculatorTemplate<int32>;
+using StringToInt32Calculator = StringToIntCalculatorTemplate<int32_t>;
 REGISTER_CALCULATOR(StringToInt32Calculator);
 
-using StringToUint32Calculator = StringToIntCalculatorTemplate<uint32>;
+using StringToUint32Calculator = StringToIntCalculatorTemplate<uint32_t>;
 REGISTER_CALCULATOR(StringToUint32Calculator);
 
-using StringToInt64Calculator = StringToIntCalculatorTemplate<int64>;
+using StringToInt64Calculator = StringToIntCalculatorTemplate<int64_t>;
 REGISTER_CALCULATOR(StringToInt64Calculator);
 
-using StringToUint64Calculator = StringToIntCalculatorTemplate<uint64>;
+using StringToUint64Calculator = StringToIntCalculatorTemplate<uint64_t>;
 REGISTER_CALCULATOR(StringToUint64Calculator);
 
 }  // namespace mediapipe
