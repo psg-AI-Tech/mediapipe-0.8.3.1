@@ -1,10 +1,11 @@
 absl-py
 attrs
 dataclasses
-# numpy == 1.19.3
+numpy == 1.19.3
 opencv-python
-numpy == 1.24.3
+# numpy == 1.24.3
 # opencv-python == 4.7.0.68
+# opencv-python == 4.5.1.48
 protobuf>=3.11.4
 six
 wheel
