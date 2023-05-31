@@ -52,8 +52,11 @@ if [ -z "$1" ]
     rm -rf /tmp/build_opencv
     mkdir /tmp/build_opencv
     cd /tmp/build_opencv
-    git clone https://github.com/opencv/opencv_contrib.git
-    git clone https://github.com/opencv/opencv.git
+    # git clone https://github.com/opencv/opencv_contrib.git
+    # git clone https://github.com/opencv/opencv.git
+    git clone git@github.com:opencv/opencv_contrib.git
+    git clone git@github.com:opencv/opencv.git
+
     mkdir opencv/release
     cd opencv_contrib
     git checkout 3.4
