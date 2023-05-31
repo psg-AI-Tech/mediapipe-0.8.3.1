@@ -241,8 +241,8 @@ class BuildBinaryGraphs(build.build):
     bazel_command = [
         'bazel',
         'build',
-        '--compilation_mode=opt',
-        '--copt=-DNDEBUG',
+        # '--compilation_mode=opt',
+        # '--copt=-DNDEBUG',
         '--define=MEDIAPIPE_DISABLE_GPU=1',
         '--action_env=PYTHON_BIN_PATH=' + _normalize_path(sys.executable),
         os.path.join('mediapipe/modules/', graph_path),
@@ -298,6 +298,7 @@ class BuildBazelExtension(build_ext.build_ext):
     bazel_command = [
         'bazel',
         'build',
+        # "--cxxopt= '--std=c++14'",
         '--compilation_mode=opt',
         '--copt=-DNDEBUG',
         '--define=MEDIAPIPE_DISABLE_GPU=1',
