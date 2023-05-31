@@ -72,10 +72,16 @@ class Image {
 
   // Creates an Image representing the same image content as the ImageFrame
   // the input shared pointer points to, and retaining shared ownership.
-  explicit Image(ImageFrameSharedPtr frame_buffer)
-      : image_frame_(std::move(frame_buffer)) {
+  explicit Image(ImageFrameSharedPtr image_frame)
+      : image_frame_(std::move(image_frame)) {
     use_gpu_ = false;
     pixel_mutex_ = std::make_shared<absl::Mutex>();
+  }
+
+  // CPU getters.
+  const ImageFrameSharedPtr& GetImageFrameSharedPtr() const {
+    if (use_gpu_ == true) ConvertToCpu();
+    return image_frame_;
   }
 
   // Creates an Image representing the same image content as the input GPU
@@ -95,13 +101,8 @@ class Image {
     gpu_buffer_ = gpu_buffer;
     pixel_mutex_ = std::make_shared<absl::Mutex>();
   }
-#endif  // !MEDIAPIPE_DISABLE_GPU
 
-  const ImageFrameSharedPtr& GetImageFrameSharedPtr() const {
-    if (use_gpu_ == true) ConvertToCpu();
-    return image_frame_;
-  }
-#if !MEDIAPIPE_DISABLE_GPU
+  // GPU getters.
 #if MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
   CVPixelBufferRef GetCVPixelBufferRef() const {
     if (use_gpu_ == false) ConvertToGpu();
@@ -235,7 +236,8 @@ inline int Image::channels() const {
 
 inline int Image::step() const {
   if (use_gpu_)
-    return width() * ImageFrame::ByteDepthForFormat(image_format());
+    return width() * channels() *
+           ImageFrame::ByteDepthForFormat(image_format());
   else
     return image_frame_->WidthStep();
 }

@@ -147,11 +147,11 @@ cc_test(
         "//mediapipe/framework:calculator_runner",
         "//mediapipe/framework/deps:file_path",
         "//mediapipe/framework/formats/object_detection:anchor_cc_proto",
-        "//mediapipe/framework/port:commandlineflags",
         "//mediapipe/framework/port:file_helpers",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:integral_types",
         "//mediapipe/framework/port:parse_text_proto",
+        "@com_google_absl//absl/flags:flag",
     ],
 )
 
@@ -160,6 +160,27 @@ selects.config_setting_group(
     match_any = [
         "//mediapipe/gpu:disable_gpu",
     ],
+)
+
+config_setting(
+    name = "edge_tpu_usb",
+    define_values = {
+        "MEDIAPIPE_EDGE_TPU": "usb",
+    },
+)
+
+config_setting(
+    name = "edge_tpu_pci",
+    define_values = {
+        "MEDIAPIPE_EDGE_TPU": "pci",
+    },
+)
+
+config_setting(
+    name = "edge_tpu_all",
+    define_values = {
+        "MEDIAPIPE_EDGE_TPU": "all",
+    },
 )
 
 cc_library(
@@ -171,6 +192,12 @@ cc_library(
             "-fobjc-arc",  # enable reference-counting
         ],
         "//conditions:default": [],
+    }),
+    defines = select({
+        "//conditions:default": [],
+        ":edge_tpu_usb": ["MEDIAPIPE_EDGE_TPU=usb"],
+        ":edge_tpu_pci": ["MEDIAPIPE_EDGE_TPU=pci"],
+        ":edge_tpu_all": ["MEDIAPIPE_EDGE_TPU=all"],
     }),
     linkopts = select({
         "//mediapipe:ios": [
@@ -222,6 +249,20 @@ cc_library(
     }) + select({
         "//conditions:default": [
             "//mediapipe/util:cpu_util",
+        ],
+    }) + select({
+        "//conditions:default": [],
+        ":edge_tpu_usb": [
+            "@libedgetpu//tflite/public:edgetpu",
+            "@libedgetpu//tflite/public:oss_edgetpu_direct_usb",
+        ],
+        ":edge_tpu_pci": [
+            "@libedgetpu//tflite/public:edgetpu",
+            "@libedgetpu//tflite/public:oss_edgetpu_direct_pci",
+        ],
+        ":edge_tpu_all": [
+            "@libedgetpu//tflite/public:edgetpu",
+            "@libedgetpu//tflite/public:oss_edgetpu_direct_all",
         ],
     }),
     alwayslink = 1,

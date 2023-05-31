@@ -821,6 +821,39 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_test(
+    name = "landmark_projection_calculator_test",
+    srcs = ["landmark_projection_calculator_test.cc"],
+    deps = [
+        ":landmark_projection_calculator",
+        "//mediapipe/calculators/tensor:image_to_tensor_utils",
+        "//mediapipe/framework:calculator_cc_proto",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:calculator_runner",
+        "//mediapipe/framework/deps:message_matchers",
+        "//mediapipe/framework/formats:landmark_cc_proto",
+        "//mediapipe/framework/formats:rect_cc_proto",
+        "//mediapipe/framework/port:gtest_main",
+        "//mediapipe/framework/port:parse_text_proto",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "world_landmark_projection_calculator",
+    srcs = ["world_landmark_projection_calculator.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/formats:landmark_cc_proto",
+        "//mediapipe/framework/formats:rect_cc_proto",
+        "//mediapipe/framework/port:ret_check",
+        "//mediapipe/framework/port:status",
+    ],
+    alwayslink = 1,
+)
+
 mediapipe_proto_library(
     name = "landmarks_smoothing_calculator_proto",
     srcs = ["landmarks_smoothing_calculator.proto"],
@@ -840,8 +873,61 @@ cc_library(
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework:timestamp",
         "//mediapipe/framework/formats:landmark_cc_proto",
+        "//mediapipe/framework/formats:rect_cc_proto",
         "//mediapipe/framework/port:ret_check",
+        "//mediapipe/util/filtering:one_euro_filter",
         "//mediapipe/util/filtering:relative_velocity_filter",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+    alwayslink = 1,
+)
+
+mediapipe_proto_library(
+    name = "visibility_smoothing_calculator_proto",
+    srcs = ["visibility_smoothing_calculator.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//mediapipe/framework:calculator_options_proto",
+        "//mediapipe/framework:calculator_proto",
+    ],
+)
+
+cc_library(
+    name = "visibility_smoothing_calculator",
+    srcs = ["visibility_smoothing_calculator.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":visibility_smoothing_calculator_cc_proto",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:timestamp",
+        "//mediapipe/framework/formats:landmark_cc_proto",
+        "//mediapipe/framework/port:ret_check",
+        "//mediapipe/util/filtering:low_pass_filter",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+    alwayslink = 1,
+)
+
+mediapipe_proto_library(
+    name = "visibility_copy_calculator_proto",
+    srcs = ["visibility_copy_calculator.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//mediapipe/framework:calculator_options_proto",
+        "//mediapipe/framework:calculator_proto",
+    ],
+)
+
+cc_library(
+    name = "visibility_copy_calculator",
+    srcs = ["visibility_copy_calculator.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":visibility_copy_calculator_cc_proto",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:timestamp",
+        "//mediapipe/framework/formats:landmark_cc_proto",
+        "//mediapipe/framework/port:ret_check",
         "@com_google_absl//absl/algorithm:container",
     ],
     alwayslink = 1,
@@ -858,7 +944,7 @@ cc_library(
         "//mediapipe/framework/formats:matrix",
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:status",
-        "@eigen_archive//:eigen",
+        "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
 )
@@ -1193,4 +1279,108 @@ cc_library(
         ],
     }),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "detection_classifications_merger_calculator",
+    srcs = ["detection_classifications_merger_calculator.cc"],
+    deps = [
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/api2:node",
+        "//mediapipe/framework/formats:classification_cc_proto",
+        "//mediapipe/framework/formats:detection_cc_proto",
+        "//mediapipe/framework/port:ret_check",
+        "//mediapipe/framework/port:status",
+        "//mediapipe/framework/port:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+cc_test(
+    name = "detection_classifications_merger_calculator_test",
+    srcs = ["detection_classifications_merger_calculator_test.cc"],
+    deps = [
+        ":detection_classifications_merger_calculator",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:calculator_runner",
+        "//mediapipe/framework/deps:message_matchers",
+        "//mediapipe/framework/formats:classification_cc_proto",
+        "//mediapipe/framework/formats:detection_cc_proto",
+        "//mediapipe/framework/port:gtest_main",
+        "//mediapipe/framework/port:parse_text_proto",
+    ],
+)
+
+mediapipe_proto_library(
+    name = "refine_landmarks_from_heatmap_calculator_proto",
+    srcs = ["refine_landmarks_from_heatmap_calculator.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//mediapipe/framework:calculator_options_proto",
+        "//mediapipe/framework:calculator_proto",
+    ],
+)
+
+cc_library(
+    name = "refine_landmarks_from_heatmap_calculator",
+    srcs = ["refine_landmarks_from_heatmap_calculator.cc"],
+    hdrs = ["refine_landmarks_from_heatmap_calculator.h"],
+    copts = select({
+        "//mediapipe:apple": [
+            "-x objective-c++",
+            "-fobjc-arc",  # enable reference-counting
+        ],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":refine_landmarks_from_heatmap_calculator_cc_proto",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/api2:node",
+        "//mediapipe/framework/formats:landmark_cc_proto",
+        "//mediapipe/framework/formats:tensor",
+        "//mediapipe/framework/port:statusor",
+    ],
+    alwayslink = 1,
+)
+
+cc_test(
+    name = "refine_landmarks_from_heatmap_calculator_test",
+    srcs = ["refine_landmarks_from_heatmap_calculator_test.cc"],
+    deps = [
+        ":refine_landmarks_from_heatmap_calculator",
+        "//mediapipe/framework/port:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "inverse_matrix_calculator",
+    srcs = ["inverse_matrix_calculator.cc"],
+    hdrs = ["inverse_matrix_calculator.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/api2:node",
+        "//mediapipe/framework/api2:port",
+        "@com_google_absl//absl/status",
+        "@eigen_archive//:eigen3",
+    ],
+    alwayslink = True,
+)
+
+cc_test(
+    name = "inverse_matrix_calculator_test",
+    srcs = ["inverse_matrix_calculator_test.cc"],
+    tags = ["desktop_only_test"],
+    deps = [
+        ":inverse_matrix_calculator",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:calculator_runner",
+        "//mediapipe/framework/port:gtest_main",
+        "//mediapipe/framework/port:integral_types",
+        "//mediapipe/framework/port:parse_text_proto",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
 )

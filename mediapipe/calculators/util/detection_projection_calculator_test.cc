@@ -31,6 +31,9 @@
 namespace mediapipe {
 namespace {
 
+constexpr char kProjectionMatrixTag[] = "PROJECTION_MATRIX";
+constexpr char kDetectionsTag[] = "DETECTIONS";
+
 using ::testing::ElementsAre;
 using ::testing::FloatNear;
 
@@ -66,27 +69,27 @@ std::vector<Point2_f> GetPoints(const Detection& detection) {
 // Test helper function to run "DetectionProjectionCalculator".
 absl::StatusOr<Detection> RunProjectionCalculator(
     Detection detection, std::array<float, 16> project_mat) {
-  CalculatorRunner runner(ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"(
+  CalculatorRunner runner(ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"pb(
     calculator: "DetectionProjectionCalculator"
     input_stream: "DETECTIONS:detections"
     input_stream: "PROJECTION_MATRIX:matrix"
     output_stream: "DETECTIONS:projected_detections"
-  )"));
+  )pb"));
 
   runner.MutableInputs()
-      ->Tag("DETECTIONS")
+      ->Tag(kDetectionsTag)
       .packets.push_back(MakePacket<std::vector<Detection>>(
                              std::vector<Detection>({std::move(detection)}))
                              .At(Timestamp::PostStream()));
   runner.MutableInputs()
-      ->Tag("PROJECTION_MATRIX")
+      ->Tag(kProjectionMatrixTag)
       .packets.push_back(
           MakePacket<std::array<float, 16>>(std::move(project_mat))
               .At(Timestamp::PostStream()));
 
   MP_RETURN_IF_ERROR(runner.Run());
   const std::vector<Packet>& output =
-      runner.Outputs().Tag("DETECTIONS").packets;
+      runner.Outputs().Tag(kDetectionsTag).packets;
   RET_CHECK_EQ(output.size(), 1);
   const auto& output_detections = output[0].Get<std::vector<Detection>>();
 

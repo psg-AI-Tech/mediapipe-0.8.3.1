@@ -36,6 +36,13 @@
 namespace mediapipe {
 
 namespace {
+
+constexpr char kDropTimestampsTag[] = "DROP_TIMESTAMPS";
+constexpr char kClockTag[] = "CLOCK";
+constexpr char kWarmupTimeTag[] = "WARMUP_TIME";
+constexpr char kSleepTimeTag[] = "SLEEP_TIME";
+constexpr char kPacketTag[] = "PACKET";
+
 // A simple Semaphore for synchronizing test threads.
 class AtomicSemaphore {
  public:
@@ -126,7 +133,7 @@ class FlowLimiterCalculatorSemaphoreTest : public testing::Test {
   // Back-edge "finished" limits processing to one frame in-flight.
   // The LambdaCalculator is used to keep certain frames in flight.
   CalculatorGraphConfig InflightGraphConfig() {
-    return ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+    return ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
       input_stream: 'in_1'
       node {
         calculator: 'FlowLimiterCalculator'
@@ -143,7 +150,7 @@ class FlowLimiterCalculatorSemaphoreTest : public testing::Test {
         input_stream: 'in_1_sampled'
         output_stream: 'out_1'
       }
-    )");
+    )pb");
   }
 
  protected:
@@ -204,17 +211,17 @@ TEST_F(FlowLimiterCalculatorSemaphoreTest, FramesDropped) {
 class SleepCalculator : public CalculatorBase {
  public:
   static absl::Status GetContract(CalculatorContract* cc) {
-    cc->Inputs().Tag("PACKET").SetAny();
-    cc->Outputs().Tag("PACKET").SetSameAs(&cc->Inputs().Tag("PACKET"));
-    cc->InputSidePackets().Tag("SLEEP_TIME").Set<int64>();
-    cc->InputSidePackets().Tag("WARMUP_TIME").Set<int64>();
-    cc->InputSidePackets().Tag("CLOCK").Set<mediapipe::Clock*>();
+    cc->Inputs().Tag(kPacketTag).SetAny();
+    cc->Outputs().Tag(kPacketTag).SetSameAs(&cc->Inputs().Tag(kPacketTag));
+    cc->InputSidePackets().Tag(kSleepTimeTag).Set<int64>();
+    cc->InputSidePackets().Tag(kWarmupTimeTag).Set<int64>();
+    cc->InputSidePackets().Tag(kClockTag).Set<mediapipe::Clock*>();
     cc->SetTimestampOffset(0);
     return absl::OkStatus();
   }
 
   absl::Status Open(CalculatorContext* cc) final {
-    clock_ = cc->InputSidePackets().Tag("CLOCK").Get<mediapipe::Clock*>();
+    clock_ = cc->InputSidePackets().Tag(kClockTag).Get<mediapipe::Clock*>();
     return absl::OkStatus();
   }
 
@@ -222,10 +229,12 @@ class SleepCalculator : public CalculatorBase {
     ++packet_count;
     absl::Duration sleep_time = absl::Microseconds(
         packet_count == 1
-            ? cc->InputSidePackets().Tag("WARMUP_TIME").Get<int64>()
-            : cc->InputSidePackets().Tag("SLEEP_TIME").Get<int64>());
+            ? cc->InputSidePackets().Tag(kWarmupTimeTag).Get<int64>()
+            : cc->InputSidePackets().Tag(kSleepTimeTag).Get<int64>());
     clock_->Sleep(sleep_time);
-    cc->Outputs().Tag("PACKET").AddPacket(cc->Inputs().Tag("PACKET").Value());
+    cc->Outputs()
+        .Tag(kPacketTag)
+        .AddPacket(cc->Inputs().Tag(kPacketTag).Value());
     return absl::OkStatus();
   }
 
@@ -240,24 +249,27 @@ REGISTER_CALCULATOR(SleepCalculator);
 class DropCalculator : public CalculatorBase {
  public:
   static absl::Status GetContract(CalculatorContract* cc) {
-    cc->Inputs().Tag("PACKET").SetAny();
-    cc->Outputs().Tag("PACKET").SetSameAs(&cc->Inputs().Tag("PACKET"));
-    cc->InputSidePackets().Tag("DROP_TIMESTAMPS").Set<bool>();
+    cc->Inputs().Tag(kPacketTag).SetAny();
+    cc->Outputs().Tag(kPacketTag).SetSameAs(&cc->Inputs().Tag(kPacketTag));
+    cc->InputSidePackets().Tag(kDropTimestampsTag).Set<bool>();
     cc->SetProcessTimestampBounds(true);
     return absl::OkStatus();
   }
 
   absl::Status Process(CalculatorContext* cc) final {
-    if (!cc->Inputs().Tag("PACKET").Value().IsEmpty()) {
+    if (!cc->Inputs().Tag(kPacketTag).Value().IsEmpty()) {
       ++packet_count;
     }
     bool drop = (packet_count == 3);
-    if (!drop && !cc->Inputs().Tag("PACKET").Value().IsEmpty()) {
-      cc->Outputs().Tag("PACKET").AddPacket(cc->Inputs().Tag("PACKET").Value());
+    if (!drop && !cc->Inputs().Tag(kPacketTag).Value().IsEmpty()) {
+      cc->Outputs()
+          .Tag(kPacketTag)
+          .AddPacket(cc->Inputs().Tag(kPacketTag).Value());
     }
-    if (!drop || !cc->InputSidePackets().Tag("DROP_TIMESTAMPS").Get<bool>()) {
-      cc->Outputs().Tag("PACKET").SetNextTimestampBound(
-          cc->InputTimestamp().NextAllowedInStream());
+    if (!drop || !cc->InputSidePackets().Tag(kDropTimestampsTag).Get<bool>()) {
+      cc->Outputs()
+          .Tag(kPacketTag)
+          .SetNextTimestampBound(cc->InputTimestamp().NextAllowedInStream());
     }
     return absl::OkStatus();
   }
@@ -271,7 +283,7 @@ REGISTER_CALCULATOR(DropCalculator);
 class FlowLimiterCalculatorTest : public testing::Test {
  protected:
   CalculatorGraphConfig InflightGraphConfig() {
-    return ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+    return ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
       input_stream: 'in_1'
       node {
         calculator: 'FlowLimiterCalculator'
@@ -296,7 +308,7 @@ class FlowLimiterCalculatorTest : public testing::Test {
         input_stream: 'PACKET:out_1_sampled'
         output_stream: 'PACKET:out_1'
       }
-    )");
+    )pb");
   }
 
   // Parse an absl::Time from RFC3339 format.
@@ -348,10 +360,10 @@ TEST_F(FlowLimiterCalculatorTest, FinishedTimestamps) {
   SetUpInputData();
   SetUpSimulationClock();
   CalculatorGraphConfig graph_config = InflightGraphConfig();
-  auto limiter_options = ParseTextProtoOrDie<FlowLimiterCalculatorOptions>(R"(
+  auto limiter_options = ParseTextProtoOrDie<FlowLimiterCalculatorOptions>(R"pb(
     max_in_flight: 1
     max_in_queue: 1
-  )");
+  )pb");
   std::map<std::string, Packet> side_packets = {
       {"limiter_options",
        MakePacket<FlowLimiterCalculatorOptions>(limiter_options)},
@@ -419,11 +431,11 @@ TEST_F(FlowLimiterCalculatorTest, FinishedLost) {
   SetUpInputData();
   SetUpSimulationClock();
   CalculatorGraphConfig graph_config = InflightGraphConfig();
-  auto limiter_options = ParseTextProtoOrDie<FlowLimiterCalculatorOptions>(R"(
+  auto limiter_options = ParseTextProtoOrDie<FlowLimiterCalculatorOptions>(R"pb(
     max_in_flight: 1
     max_in_queue: 1
     in_flight_timeout: 100000  # 100 ms
-  )");
+  )pb");
   std::map<std::string, Packet> side_packets = {
       {"limiter_options",
        MakePacket<FlowLimiterCalculatorOptions>(limiter_options)},
@@ -483,11 +495,11 @@ TEST_F(FlowLimiterCalculatorTest, FinishedDelayed) {
   SetUpInputData();
   SetUpSimulationClock();
   CalculatorGraphConfig graph_config = InflightGraphConfig();
-  auto limiter_options = ParseTextProtoOrDie<FlowLimiterCalculatorOptions>(R"(
+  auto limiter_options = ParseTextProtoOrDie<FlowLimiterCalculatorOptions>(R"pb(
     max_in_flight: 1
     max_in_queue: 1
     in_flight_timeout: 100000  # 100 ms
-  )");
+  )pb");
   std::map<std::string, Packet> side_packets = {
       {"limiter_options",
        MakePacket<FlowLimiterCalculatorOptions>(limiter_options)},
@@ -548,7 +560,7 @@ TEST_F(FlowLimiterCalculatorTest, TwoInputStreams) {
   SetUpInputData();
   SetUpSimulationClock();
   CalculatorGraphConfig graph_config =
-      ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: 'in_1'
         input_stream: 'in_2'
         node {
@@ -576,13 +588,13 @@ TEST_F(FlowLimiterCalculatorTest, TwoInputStreams) {
           input_stream: 'PACKET:out_1_sampled'
           output_stream: 'PACKET:out_1'
         }
-      )");
+      )pb");
 
-  auto limiter_options = ParseTextProtoOrDie<FlowLimiterCalculatorOptions>(R"(
+  auto limiter_options = ParseTextProtoOrDie<FlowLimiterCalculatorOptions>(R"pb(
     max_in_flight: 1
     max_in_queue: 1
     in_flight_timeout: 100000  # 100 ms
-  )");
+  )pb");
   std::map<std::string, Packet> side_packets = {
       {"limiter_options",
        MakePacket<FlowLimiterCalculatorOptions>(limiter_options)},
@@ -657,7 +669,7 @@ TEST_F(FlowLimiterCalculatorTest, ZeroQueue) {
   SetUpInputData();
   SetUpSimulationClock();
   CalculatorGraphConfig graph_config =
-      ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: 'in_1'
         input_stream: 'in_2'
         node {
@@ -685,13 +697,13 @@ TEST_F(FlowLimiterCalculatorTest, ZeroQueue) {
           input_stream: 'PACKET:out_1_sampled'
           output_stream: 'PACKET:out_1'
         }
-      )");
+      )pb");
 
-  auto limiter_options = ParseTextProtoOrDie<FlowLimiterCalculatorOptions>(R"(
+  auto limiter_options = ParseTextProtoOrDie<FlowLimiterCalculatorOptions>(R"pb(
     max_in_flight: 1
     max_in_queue: 0
     in_flight_timeout: 100000  # 100 ms
-  )");
+  )pb");
   std::map<std::string, Packet> side_packets = {
       {"limiter_options",
        MakePacket<FlowLimiterCalculatorOptions>(limiter_options)},

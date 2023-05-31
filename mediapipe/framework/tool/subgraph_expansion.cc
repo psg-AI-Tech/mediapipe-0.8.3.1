@@ -25,6 +25,7 @@
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "mediapipe/framework/graph_service_manager.h"
 #include "mediapipe/framework/packet_generator.pb.h"
 #include "mediapipe/framework/port.h"
 #include "mediapipe/framework/port/core_proto_inc.h"
@@ -185,7 +186,6 @@ absl::Status FindCorrespondingStreams(
 absl::Status ValidateSubgraphFields(
     const CalculatorGraphConfig::Node& subgraph_node) {
   if (subgraph_node.source_layer() || subgraph_node.buffer_size_hint() ||
-      subgraph_node.has_input_stream_handler() ||
       subgraph_node.has_output_stream_handler() ||
       subgraph_node.input_stream_info_size() != 0 ||
       !subgraph_node.executor().empty()) {
@@ -273,10 +273,13 @@ absl::Status ConnectSubgraphStreams(
 }
 
 absl::Status ExpandSubgraphs(CalculatorGraphConfig* config,
-                             const GraphRegistry* graph_registry) {
+                             const GraphRegistry* graph_registry,
+                             const GraphServiceManager* service_manager) {
   graph_registry =
       graph_registry ? graph_registry : &GraphRegistry::global_graph_registry;
   RET_CHECK(config);
+  MP_RETURN_IF_ERROR(mediapipe::tool::DefineGraphOptions(
+      CalculatorGraphConfig::Node(), config));
   auto* nodes = config->mutable_node();
   while (1) {
     auto subgraph_nodes_start = std::stable_partition(
@@ -292,9 +295,11 @@ absl::Status ExpandSubgraphs(CalculatorGraphConfig* config,
       int node_id = it - nodes->begin();
       std::string node_name = CanonicalNodeName(*config, node_id);
       MP_RETURN_IF_ERROR(ValidateSubgraphFields(node));
-      ASSIGN_OR_RETURN(auto subgraph,
-                       graph_registry->CreateByName(config->package(),
-                                                    node.calculator(), &node));
+      SubgraphContext subgraph_context(&node, service_manager);
+      ASSIGN_OR_RETURN(auto subgraph, graph_registry->CreateByName(
+                                          config->package(), node.calculator(),
+                                          &subgraph_context));
+      MP_RETURN_IF_ERROR(mediapipe::tool::DefineGraphOptions(node, &subgraph));
       MP_RETURN_IF_ERROR(PrefixNames(node_name, &subgraph));
       MP_RETURN_IF_ERROR(ConnectSubgraphStreams(node, &subgraph));
       subgraphs.push_back(subgraph);

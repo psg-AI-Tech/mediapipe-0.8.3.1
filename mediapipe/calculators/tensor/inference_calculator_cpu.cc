@@ -35,20 +35,28 @@ namespace api2 {
 
 namespace {
 
+int GetXnnpackDefaultNumThreads() {
+#if defined(MEDIAPIPE_ANDROID) || defined(MEDIAPIPE_IOS) || \
+    defined(__EMSCRIPTEN_PTHREADS__)
+  constexpr int kMinNumThreadsByDefault = 1;
+  constexpr int kMaxNumThreadsByDefault = 4;
+  return std::clamp(NumCPUCores() / 2, kMinNumThreadsByDefault,
+                    kMaxNumThreadsByDefault);
+#else
+  return 1;
+#endif  // MEDIAPIPE_ANDROID || MEDIAPIPE_IOS || __EMSCRIPTEN_PTHREADS__
+}
+
 // Returns number of threads to configure XNNPACK delegate with.
-// (Equal to user provided value if specified.  Otherwise, it returns number of
-// high cores (hard-coded to 1 for Emscripten without Threads extension))
+// Returns user provided value if specified. Otherwise, tries to choose optimal
+// number of threads depending on the device.
 int GetXnnpackNumThreads(const mediapipe::InferenceCalculatorOptions& opts) {
   static constexpr int kDefaultNumThreads = -1;
   if (opts.has_delegate() && opts.delegate().has_xnnpack() &&
       opts.delegate().xnnpack().num_threads() != kDefaultNumThreads) {
     return opts.delegate().xnnpack().num_threads();
   }
-#if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
-  return InferHigherCoreIds().size();
-#else
-  return 1;
-#endif  // !__EMSCRIPTEN__ || __EMSCRIPTEN_PTHREADS__
+  return GetXnnpackDefaultNumThreads();
 }
 
 }  // namespace
@@ -65,6 +73,7 @@ class InferenceCalculatorCpuImpl
  private:
   absl::Status LoadModel(CalculatorContext* cc);
   absl::Status LoadDelegate(CalculatorContext* cc);
+  absl::Status LoadDelegateAndAllocateTensors(CalculatorContext* cc);
 
   // TfLite requires us to keep the model alive as long as the interpreter is.
   Packet<TfLiteModelPtr> model_packet_;
@@ -83,8 +92,7 @@ absl::Status InferenceCalculatorCpuImpl::UpdateContract(
 
 absl::Status InferenceCalculatorCpuImpl::Open(CalculatorContext* cc) {
   MP_RETURN_IF_ERROR(LoadModel(cc));
-  MP_RETURN_IF_ERROR(LoadDelegate(cc));
-  return absl::OkStatus();
+  return LoadDelegateAndAllocateTensors(cc);
 }
 
 absl::Status InferenceCalculatorCpuImpl::Process(CalculatorContext* cc) {
@@ -136,7 +144,7 @@ absl::Status InferenceCalculatorCpuImpl::LoadModel(CalculatorContext* cc) {
   const auto& model = *model_packet_.Get();
   tflite::ops::builtin::BuiltinOpResolver op_resolver =
       kSideInCustomOpResolver(cc).GetOr(
-          tflite::ops::builtin::BuiltinOpResolver());
+          tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
 
   tflite::InterpreterBuilder(model, op_resolver)(&interpreter_);
   RET_CHECK(interpreter_);
@@ -148,11 +156,19 @@ absl::Status InferenceCalculatorCpuImpl::LoadModel(CalculatorContext* cc) {
       cc->Options<mediapipe::InferenceCalculatorOptions>().cpu_num_thread());
 #endif  // __EMSCRIPTEN__
 
+  return absl::OkStatus();
+}
+
+absl::Status InferenceCalculatorCpuImpl::LoadDelegateAndAllocateTensors(
+    CalculatorContext* cc) {
+  MP_RETURN_IF_ERROR(LoadDelegate(cc));
+
+  // AllocateTensors() can be called only after ModifyGraphWithDelegate.
   RET_CHECK_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   // TODO: Support quantized tensors.
-  CHECK(interpreter_->tensor(interpreter_->inputs()[0])->quantization.type !=
-        kTfLiteAffineQuantization);
-
+  RET_CHECK_NE(
+      interpreter_->tensor(interpreter_->inputs()[0])->quantization.type,
+      kTfLiteAffineQuantization);
   return absl::OkStatus();
 }
 
@@ -173,9 +189,21 @@ absl::Status InferenceCalculatorCpuImpl::LoadDelegate(CalculatorContext* cc) {
     // Attempt to use NNAPI.
     // If not supported, the default CPU delegate will be created and used.
     interpreter_->SetAllowFp16PrecisionForFp32(1);
-    delegate_ = TfLiteDelegatePtr(tflite::NnApiDelegate(), [](TfLiteDelegate*) {
-      // No need to free according to tflite::NnApiDelegate() documentation.
-    });
+    tflite::StatefulNnApiDelegate::Options options;
+    const auto& nnapi = calculator_opts.delegate().nnapi();
+    // Set up cache_dir and model_token for NNAPI compilation cache.
+    options.cache_dir =
+        nnapi.has_cache_dir() ? nnapi.cache_dir().c_str() : nullptr;
+    if (!kNnApiDelegateCacheDir(cc).IsEmpty()) {
+      options.cache_dir = kNnApiDelegateCacheDir(cc).Get().c_str();
+    }
+    options.model_token =
+        nnapi.has_model_token() ? nnapi.model_token().c_str() : nullptr;
+    if (!kNnApiDelegateModelToken(cc).IsEmpty()) {
+      options.model_token = kNnApiDelegateModelToken(cc).Get().c_str();
+    }
+    delegate_ = TfLiteDelegatePtr(new tflite::StatefulNnApiDelegate(options),
+                                  [](TfLiteDelegate*) {});
     RET_CHECK_EQ(interpreter_->ModifyGraphWithDelegate(delegate_.get()),
                  kTfLiteOk);
     return absl::OkStatus();

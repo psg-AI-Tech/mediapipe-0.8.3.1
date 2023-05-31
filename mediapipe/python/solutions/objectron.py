@@ -1,4 +1,4 @@
-# Copyright 2020 The MediaPipe Authors.
+# Copyright 2020-2021 The MediaPipe Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,6 +45,7 @@ from mediapipe.modules.objectron.calculators import frame_annotation_to_rect_cal
 from mediapipe.modules.objectron.calculators import lift_2d_frame_annotation_to_3d_calculator_pb2
 # pylint: enable=unused-import
 from mediapipe.python.solution_base import SolutionBase
+from mediapipe.python.solutions import download_utils
 
 
 class BoxLandmark(enum.IntEnum):
@@ -132,9 +133,19 @@ _MODEL_DICT = {
 }
 
 
-def GetModelByName(name: str) -> ObjectronModel:
+def _download_oss_objectron_models(objectron_model: str):
+  """Downloads the objectron models from the MediaPipe Github repo if they don't exist in the package."""
+
+  download_utils.download_oss_model(
+      'mediapipe/modules/objectron/object_detection_ssd_mobilenetv2_oidv4_fp16.tflite'
+  )
+  download_utils.download_oss_model(objectron_model)
+
+
+def get_model_by_name(name: str) -> ObjectronModel:
   if name not in _MODEL_DICT:
     raise ValueError(f'{name} is not a valid model name for Objectron.')
+  _download_oss_objectron_models(_MODEL_DICT[name].model_path)
   return _MODEL_DICT[name]
 
 
@@ -186,6 +197,10 @@ class Objectron(SolutionBase):
         conversions inside the API.
       image_size (Optional): size (image_width, image_height) of the input image
         , ONLY needed when use focal_length and principal_point in pixel space.
+
+    Raises:
+      ConnectionError: If the objectron open source model can't be downloaded
+        from the MediaPipe Github repo.
     """
     # Get Camera parameters.
     fx, fy = focal_length
@@ -199,7 +214,7 @@ class Objectron(SolutionBase):
       py = - (py - half_height) / half_height
 
     # Create and init model.
-    model = GetModelByName(model_name)
+    model = get_model_by_name(model_name)
     super().__init__(
         binary_graph_path=BINARYPB_FILE_PATH,
         side_inputs={
@@ -275,4 +290,3 @@ class Objectron(SolutionBase):
       new_outputs.append(ObjectronOutputs(landmarks_2d, landmarks_3d,
                                           rotation, translation, scale=scale))
     return new_outputs
-

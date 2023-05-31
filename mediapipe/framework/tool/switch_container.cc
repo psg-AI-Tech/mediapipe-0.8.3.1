@@ -59,6 +59,11 @@ using mediapipe::SwitchContainerOptions;
 // or contained_node 1, given "ENABLE:false" or "ENABLE:true" respectively.
 // Input-side-packet "ENABLE" and input-stream "SELECT" can also be used
 // similarly to specify the active channel.
+//
+// Note that this container defaults to use ImmediateInputStreamHandler,
+// which can be used to accept infrequent "enable" packets asynchronously.
+// However, it can be overridden to work with DefaultInputStreamHandler,
+// which can be used to accept frequent "enable" packets synchronously.
 class SwitchContainer : public Subgraph {
  public:
   SwitchContainer() = default;
@@ -79,9 +84,16 @@ std::string ChannelName(const std::string& name, int channel) {
 // Returns a SwitchDemuxCalculator node.
 CalculatorGraphConfig::Node* BuildDemuxNode(
     const std::map<TagIndex, std::string>& input_tags,
+    const CalculatorGraphConfig::Node& container_node,
     CalculatorGraphConfig* config) {
   CalculatorGraphConfig::Node* result = config->add_node();
   *result->mutable_calculator() = "SwitchDemuxCalculator";
+  *result->mutable_input_stream_handler()->mutable_input_stream_handler() =
+      "ImmediateInputStreamHandler";
+  if (container_node.has_input_stream_handler()) {
+    *result->mutable_input_stream_handler() =
+        container_node.input_stream_handler();
+  }
   return result;
 }
 
@@ -91,7 +103,40 @@ CalculatorGraphConfig::Node* BuildMuxNode(
     CalculatorGraphConfig* config) {
   CalculatorGraphConfig::Node* result = config->add_node();
   *result->mutable_calculator() = "SwitchMuxCalculator";
+  *result->mutable_input_stream_handler()->mutable_input_stream_handler() =
+      "ImmediateInputStreamHandler";
   return result;
+}
+
+// Copies options from one node to another.
+void CopyOptions(const CalculatorGraphConfig::Node& source,
+                 CalculatorGraphConfig::Node* dest) {
+  if (source.has_options()) {
+    *dest->mutable_options() = source.options();
+  }
+  *dest->mutable_node_options() = source.node_options();
+}
+
+// Clears options that are consumed by the container and not forwarded.
+void ClearContainerOptions(SwitchContainerOptions* result) {
+  result->clear_contained_node();
+}
+
+// Clears options that are consumed by the container and not forwarded.
+void ClearContainerOptions(CalculatorGraphConfig::Node* dest) {
+  if (dest->has_options() &&
+      dest->mutable_options()->HasExtension(SwitchContainerOptions::ext)) {
+    ClearContainerOptions(
+        dest->mutable_options()->MutableExtension(SwitchContainerOptions::ext));
+  }
+  for (google::protobuf::Any& a : *dest->mutable_node_options()) {
+    if (a.Is<SwitchContainerOptions>()) {
+      SwitchContainerOptions extension;
+      a.UnpackTo(&extension);
+      ClearContainerOptions(&extension);
+      a.PackFrom(extension);
+    }
+  }
 }
 
 // Returns an unused name similar to a specified name.
@@ -198,13 +243,17 @@ absl::StatusOr<CalculatorGraphConfig> SwitchContainer::GetConfig(
   ParseTags(container_streams.output_side_packet(), &side_output_tags);
 
   // Add a graph node for the demux, mux.
-  auto demux = BuildDemuxNode(input_tags, &config);
+  auto demux = BuildDemuxNode(input_tags, container_node, &config);
+  CopyOptions(container_node, demux);
+  ClearContainerOptions(demux);
   demux->add_input_stream("SELECT:gate_select");
   demux->add_input_stream("ENABLE:gate_enable");
   demux->add_input_side_packet("SELECT:gate_select");
   demux->add_input_side_packet("ENABLE:gate_enable");
 
   auto mux = BuildMuxNode(output_tags, &config);
+  CopyOptions(container_node, mux);
+  ClearContainerOptions(mux);
   mux->add_input_stream("SELECT:gate_select");
   mux->add_input_stream("ENABLE:gate_enable");
   mux->add_input_side_packet("SELECT:gate_select");

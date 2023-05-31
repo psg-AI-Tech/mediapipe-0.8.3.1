@@ -1,5 +1,7 @@
 #include "mediapipe/framework/api2/builder.h"
 
+#include <functional>
+
 #include "absl/strings/substitute.h"
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/api2/packet.h"
@@ -27,7 +29,7 @@ TEST(BuilderTest, BuildGraph) {
   bar.Out("OUT").SetName("out") >> graph.Out("OUT");
 
   CalculatorGraphConfig expected =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: "IN:base"
         input_side_packet: "SIDE:side"
         output_stream: "OUT:out"
@@ -42,7 +44,89 @@ TEST(BuilderTest, BuildGraph) {
           input_stream: "IN:__stream_0"
           output_stream: "OUT:out"
         }
-      )");
+      )pb");
+  EXPECT_THAT(graph.GetConfig(), EqualsProto(expected));
+}
+
+TEST(BuilderTest, CopyableSource) {
+  builder::Graph graph;
+  builder::Source<false, int> a = graph[Input<int>("A")];
+  a.SetName("a");
+  builder::Source<false, int> b = graph[Input<int>("B")];
+  b.SetName("b");
+  builder::SideSource<false, float> side_a = graph[SideInput<float>("SIDE_A")];
+  side_a.SetName("side_a");
+  builder::SideSource<false, float> side_b = graph[SideInput<float>("SIDE_B")];
+  side_b.SetName("side_b");
+  builder::Destination<false, int> out = graph[Output<int>("OUT")];
+  builder::SideDestination<false, float> side_out =
+      graph[SideOutput<float>("SIDE_OUT")];
+
+  builder::Source<false, int> input = a;
+  input = b;
+  builder::SideSource<false, float> side_input = side_b;
+  side_input = side_a;
+
+  input >> out;
+  side_input >> side_out;
+
+  CalculatorGraphConfig expected =
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
+        input_stream: "A:a"
+        input_stream: "B:b"
+        output_stream: "OUT:b"
+        input_side_packet: "SIDE_A:side_a"
+        input_side_packet: "SIDE_B:side_b"
+        output_side_packet: "SIDE_OUT:side_a"
+      )pb");
+  EXPECT_THAT(graph.GetConfig(), EqualsProto(expected));
+}
+
+TEST(BuilderTest, BuildGraphWithFunctions) {
+  builder::Graph graph;
+
+  builder::Source<false, int> base = graph[Input<int>("IN")];
+  base.SetName("base");
+  builder::SideSource<false, float> side = graph[SideInput<float>("SIDE")];
+  side.SetName("side");
+
+  auto foo_fn = [](builder::Source<false, int> base,
+                   builder::SideSource<false, float> side,
+                   builder::Graph& graph) {
+    auto& foo = graph.AddNode("Foo");
+    base >> foo[Input<int>("BASE")];
+    side >> foo[SideInput<float>("SIDE")];
+    return foo[Output<double>("OUT")];
+  };
+  builder::Source<false, double> foo_out = foo_fn(base, side, graph);
+
+  auto bar_fn = [](builder::Source<false, double> in, builder::Graph& graph) {
+    auto& bar = graph.AddNode("Bar");
+    in >> bar[Input<double>("IN")];
+    return bar[Output<double>("OUT")];
+  };
+  builder::Source<false, double> bar_out = bar_fn(foo_out, graph);
+  bar_out.SetName("out");
+
+  bar_out >> graph[Output<double>("OUT")];
+
+  CalculatorGraphConfig expected =
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
+        input_stream: "IN:base"
+        input_side_packet: "SIDE:side"
+        output_stream: "OUT:out"
+        node {
+          calculator: "Foo"
+          input_stream: "BASE:base"
+          input_side_packet: "SIDE:side"
+          output_stream: "OUT:__stream_0"
+        }
+        node {
+          calculator: "Bar"
+          input_stream: "IN:__stream_0"
+          output_stream: "OUT:out"
+        }
+      )pb");
   EXPECT_THAT(graph.GetConfig(), EqualsProto(expected));
 }
 
@@ -92,7 +176,7 @@ TEST(BuilderTest, FanOut) {
   adder.Out("OUT").SetName("out") >> graph.Out("OUT");
 
   CalculatorGraphConfig expected =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: "IN:base"
         output_stream: "OUT:out"
         node {
@@ -106,7 +190,7 @@ TEST(BuilderTest, FanOut) {
           input_stream: "IN:1:__stream_0"
           output_stream: "OUT:out"
         }
-      )");
+      )pb");
   EXPECT_THAT(graph.GetConfig(), EqualsProto(expected));
 }
 
@@ -120,7 +204,7 @@ TEST(BuilderTest, TypedMultiple) {
   adder.Out(MPP_TAG("OUT")).SetName("out") >> graph.Out("OUT");
 
   CalculatorGraphConfig expected =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: "IN:base"
         output_stream: "OUT:out"
         node {
@@ -134,7 +218,36 @@ TEST(BuilderTest, TypedMultiple) {
           input_stream: "IN:1:__stream_0"
           output_stream: "OUT:out"
         }
-      )");
+      )pb");
+  EXPECT_THAT(graph.GetConfig(), EqualsProto(expected));
+}
+
+TEST(BuilderTest, TypedByPorts) {
+  builder::Graph graph;
+  auto& foo = graph.AddNode<Foo>();
+  auto& adder = graph.AddNode<FloatAdder>();
+
+  graph[FooBar1::kIn].SetName("base") >> foo[Foo::kBase];
+  foo[Foo::kOut] >> adder[FloatAdder::kIn][0];
+  foo[Foo::kOut] >> adder[FloatAdder::kIn][1];
+  adder[FloatAdder::kOut].SetName("out") >> graph[FooBar1::kOut];
+
+  CalculatorGraphConfig expected =
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
+        input_stream: "IN:base"
+        output_stream: "OUT:out"
+        node {
+          calculator: "Foo"
+          input_stream: "BASE:base"
+          output_stream: "OUT:__stream_0"
+        }
+        node {
+          calculator: "FloatAdder"
+          input_stream: "IN:0:__stream_0"
+          input_stream: "IN:1:__stream_0"
+          output_stream: "OUT:out"
+        }
+      )pb");
   EXPECT_THAT(graph.GetConfig(), EqualsProto(expected));
 }
 
@@ -145,7 +258,7 @@ TEST(BuilderTest, PacketGenerator) {
   generator.SideOut("OUT") >> graph.SideOut("OUT");
 
   CalculatorGraphConfig expected =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_side_packet: "IN:__side_packet_0"
         output_side_packet: "OUT:__side_packet_1"
         packet_generator {
@@ -153,7 +266,7 @@ TEST(BuilderTest, PacketGenerator) {
           input_side_packet: "IN:__side_packet_0"
           output_side_packet: "OUT:__side_packet_1"
         }
-      )");
+      )pb");
   EXPECT_THAT(graph.GetConfig(), EqualsProto(expected));
 }
 
@@ -167,7 +280,7 @@ TEST(BuilderTest, EmptyTag) {
   foo.Out("")[1].SetName("y") >> graph.Out("TWO");
 
   CalculatorGraphConfig expected =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_stream: "A:a"
         input_stream: "B:b"
         input_stream: "C:c"
@@ -181,7 +294,7 @@ TEST(BuilderTest, EmptyTag) {
           output_stream: "x"
           output_stream: "y"
         }
-      )");
+      )pb");
   EXPECT_THAT(graph.GetConfig(), EqualsProto(expected));
 }
 

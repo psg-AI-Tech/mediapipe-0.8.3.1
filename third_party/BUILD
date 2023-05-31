@@ -64,7 +64,7 @@ config_setting(
 alias(
     name = "opencv",
     actual = select({
-        # ":opencv_source_build": ":opencv_cmake",
+        ":opencv_source_build": ":opencv_cmake",
         "//conditions:default": ":opencv_binary",
     }),
     visibility = ["//visibility:public"],
@@ -90,7 +90,7 @@ OPENCV_MODULES = [
 # still only builds the shared libraries, so we have to choose one or the
 # other. We build shared libraries by default, but this variable can be used
 # to switch to static libraries.
-OPENCV_SHARED_LIBS = False
+OPENCV_SHARED_LIBS = True
 
 OPENCV_SO_VERSION = "3.4"
 
@@ -109,7 +109,15 @@ cmake_external(
         "BUILD_SHARED_LIBS": "ON" if OPENCV_SHARED_LIBS else "OFF",
         "WITH_ITT": "OFF",
         "WITH_JASPER": "OFF",
+        "WITH_JPEG": "ON",
+        "WITH_PNG": "ON",
+        "WITH_TIFF": "ON",
         "WITH_WEBP": "OFF",
+        # Optimization flags
+        "CV_ENABLE_INTRINSICS": "ON",
+        "WITH_EIGEN": "ON",
+        "WITH_PTHREADS": "ON",
+        "WITH_PTHREADS_PF": "ON",
         # When building tests, by default Bazel builds them in dynamic mode.
         # See https://docs.bazel.build/versions/master/be/c-cpp.html#cc_binary.linkstatic
         # For example, when building //mediapipe/calculators/video:opencv_video_encoder_calculator_test,
@@ -276,5 +284,36 @@ android_library(
     name = "camerax_lifecycle",
     exports = [
         "@maven//:androidx_camera_camera_lifecycle",
+    ],
+)
+
+java_plugin(
+    name = "autovalue_plugin",
+    processor_class = "com.google.auto.value.processor.AutoValueProcessor",
+    deps = [
+        "@maven//:com_google_auto_value_auto_value",
+        "@maven//:com_google_auto_value_auto_value_annotations",
+    ],
+)
+
+java_plugin(
+    name = "autobuilder_plugin",
+    processor_class = "com.google.auto.value.processor.AutoBuilderProcessor",
+    deps = [
+        "@maven//:com_google_auto_value_auto_value",
+        "@maven//:com_google_auto_value_auto_value_annotations",
+    ],
+)
+
+java_library(
+    name = "autovalue",
+    exported_plugins = [
+        ":autovalue_plugin",
+        ":autobuilder_plugin",
+    ],
+    neverlink = 1,
+    exports = [
+        "@maven//:com_google_auto_value_auto_value",
+        "@maven//:com_google_auto_value_auto_value_annotations",
     ],
 )

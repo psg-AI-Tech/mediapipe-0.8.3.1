@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "mediapipe/calculators/tensor/inference_calculator.h"
 #include "mediapipe/util/tflite/config.h"
 
@@ -52,6 +53,7 @@ class InferenceCalculatorGlImpl
   absl::Status WriteKernelsToFile();
   absl::Status LoadModel(CalculatorContext* cc);
   absl::Status LoadDelegate(CalculatorContext* cc);
+  absl::Status LoadDelegateAndAllocateTensors(CalculatorContext* cc);
   absl::Status InitTFLiteGPURunner(CalculatorContext* cc);
 
   // TfLite requires us to keep the model alive as long as the interpreter is.
@@ -63,8 +65,10 @@ class InferenceCalculatorGlImpl
   mediapipe::GlCalculatorHelper gpu_helper_;
   std::unique_ptr<tflite::gpu::TFLiteGPURunner> tflite_gpu_runner_;
   bool allow_precision_loss_ = false;
-  mediapipe::InferenceCalculatorOptions::Delegate::Gpu::API
+  mediapipe::InferenceCalculatorOptions::Delegate::Gpu::Api
       tflite_gpu_runner_api_;
+  mediapipe::InferenceCalculatorOptions::Delegate::Gpu::InferenceUsage
+      tflite_gpu_runner_usage_;
 #endif  // MEDIAPIPE_TFLITE_GL_INFERENCE
 
 #if MEDIAPIPE_TFLITE_GPU_SUPPORTED
@@ -96,6 +100,7 @@ absl::Status InferenceCalculatorGlImpl::Open(CalculatorContext* cc) {
                           options.delegate().gpu().use_advanced_gpu_api();
   allow_precision_loss_ = options.delegate().gpu().allow_precision_loss();
   tflite_gpu_runner_api_ = options.delegate().gpu().api();
+  tflite_gpu_runner_usage_ = options.delegate().gpu().usage();
   use_kernel_caching_ = use_advanced_gpu_api_ &&
                         options.delegate().gpu().has_cached_kernel_path();
   use_gpu_delegate_ = !use_advanced_gpu_api_;
@@ -115,10 +120,11 @@ absl::Status InferenceCalculatorGlImpl::Open(CalculatorContext* cc) {
   }
 
   MP_RETURN_IF_ERROR(gpu_helper_.Open(cc));
-  MP_RETURN_IF_ERROR(gpu_helper_.RunInGlContext([this,
-                                                 &cc]() -> ::mediapipe::Status {
-    return use_advanced_gpu_api_ ? InitTFLiteGPURunner(cc) : LoadDelegate(cc);
-  }));
+  MP_RETURN_IF_ERROR(
+      gpu_helper_.RunInGlContext([this, &cc]() -> ::mediapipe::Status {
+        return use_advanced_gpu_api_ ? InitTFLiteGPURunner(cc)
+                                     : LoadDelegateAndAllocateTensors(cc);
+      }));
   return absl::OkStatus();
 }
 
@@ -244,7 +250,7 @@ absl::Status InferenceCalculatorGlImpl::InitTFLiteGPURunner(
   const auto& model = *model_packet_.Get();
   tflite::ops::builtin::BuiltinOpResolver op_resolver =
       kSideInCustomOpResolver(cc).GetOr(
-          tflite::ops::builtin::BuiltinOpResolver());
+          tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
 
   // Create runner
   tflite::gpu::InferenceOptions options;
@@ -253,9 +259,27 @@ absl::Status InferenceCalculatorGlImpl::InitTFLiteGPURunner(
                           : tflite::gpu::InferencePriority::MAX_PRECISION;
   options.priority2 = tflite::gpu::InferencePriority::AUTO;
   options.priority3 = tflite::gpu::InferencePriority::AUTO;
-  options.usage = tflite::gpu::InferenceUsage::SUSTAINED_SPEED;
+  switch (tflite_gpu_runner_usage_) {
+    case mediapipe::InferenceCalculatorOptions::Delegate::Gpu::
+        FAST_SINGLE_ANSWER: {
+      options.usage = tflite::gpu::InferenceUsage::FAST_SINGLE_ANSWER;
+      break;
+    }
+    case mediapipe::InferenceCalculatorOptions::Delegate::Gpu::
+        SUSTAINED_SPEED: {
+      options.usage = tflite::gpu::InferenceUsage::SUSTAINED_SPEED;
+      break;
+    }
+    case mediapipe::InferenceCalculatorOptions::Delegate::Gpu::UNSPECIFIED: {
+      return absl::InternalError("inference usage need to be specified.");
+    }
+  }
   tflite_gpu_runner_ = std::make_unique<tflite::gpu::TFLiteGPURunner>(options);
   switch (tflite_gpu_runner_api_) {
+    case mediapipe::InferenceCalculatorOptions::Delegate::Gpu::ANY: {
+      // Do not need to force any specific API.
+      break;
+    }
     case mediapipe::InferenceCalculatorOptions::Delegate::Gpu::OPENGL: {
       tflite_gpu_runner_->ForceOpenGL();
       break;
@@ -264,13 +288,9 @@ absl::Status InferenceCalculatorGlImpl::InitTFLiteGPURunner(
       tflite_gpu_runner_->ForceOpenCL();
       break;
     }
-    case mediapipe::InferenceCalculatorOptions::Delegate::Gpu::ANY: {
-      // Do not need to force any specific API.
-      break;
-    }
   }
-  MP_RETURN_IF_ERROR(
-      tflite_gpu_runner_->InitializeWithModel(model, op_resolver));
+  MP_RETURN_IF_ERROR(tflite_gpu_runner_->InitializeWithModel(
+      model, op_resolver, /*allow_quant_ops=*/true));
 
   // Create and bind OpenGL buffers for outputs.
   // The buffers are created once and their ids are passed to calculator outputs
@@ -294,7 +314,7 @@ absl::Status InferenceCalculatorGlImpl::LoadModel(CalculatorContext* cc) {
   const auto& model = *model_packet_.Get();
   tflite::ops::builtin::BuiltinOpResolver op_resolver =
       kSideInCustomOpResolver(cc).GetOr(
-          tflite::ops::builtin::BuiltinOpResolver());
+          tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
 
   tflite::InterpreterBuilder(model, op_resolver)(&interpreter_);
   RET_CHECK(interpreter_);
@@ -306,18 +326,27 @@ absl::Status InferenceCalculatorGlImpl::LoadModel(CalculatorContext* cc) {
       cc->Options<mediapipe::InferenceCalculatorOptions>().cpu_num_thread());
 #endif  // __EMSCRIPTEN__
 
+  return absl::OkStatus();
+}
+
+absl::Status InferenceCalculatorGlImpl::LoadDelegateAndAllocateTensors(
+    CalculatorContext* cc) {
+  MP_RETURN_IF_ERROR(LoadDelegate(cc));
+
+  // AllocateTensors() can be called only after ModifyGraphWithDelegate.
   RET_CHECK_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   // TODO: Support quantized tensors.
-  CHECK(interpreter_->tensor(interpreter_->inputs()[0])->quantization.type !=
-        kTfLiteAffineQuantization);
-
+  RET_CHECK_NE(
+      interpreter_->tensor(interpreter_->inputs()[0])->quantization.type,
+      kTfLiteAffineQuantization);
   return absl::OkStatus();
 }
 
 absl::Status InferenceCalculatorGlImpl::LoadDelegate(CalculatorContext* cc) {
   // Configure and create the delegate.
   TfLiteGpuDelegateOptions options = TfLiteGpuDelegateOptionsDefault();
-  options.compile_options.precision_loss_allowed = 1;
+  options.compile_options.precision_loss_allowed =
+      allow_precision_loss_ ? 1 : 0;
   options.compile_options.preferred_gl_object_type =
       TFLITE_GL_OBJECT_TYPE_FASTEST;
   options.compile_options.dynamic_batch_enabled = 0;

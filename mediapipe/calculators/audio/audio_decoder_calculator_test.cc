@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/flags/flag.h"
 #include "mediapipe/framework/calculator_runner.h"
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/formats/time_series_header.pb.h"
-#include "mediapipe/framework/port/commandlineflags.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
@@ -25,7 +25,7 @@ namespace mediapipe {
 
 TEST(AudioDecoderCalculatorTest, TestWAV) {
   CalculatorGraphConfig::Node node_config =
-      ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"(
+      ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"pb(
         calculator: "AudioDecoderCalculator"
         input_side_packet: "INPUT_FILE_PATH:input_file_path"
         output_stream: "AUDIO:audio"
@@ -34,7 +34,7 @@ TEST(AudioDecoderCalculatorTest, TestWAV) {
           [type.googleapis.com/mediapipe.AudioDecoderOptions]: {
             audio_stream { stream_index: 0 }
           }
-        })");
+        })pb");
   CalculatorRunner runner(node_config);
   runner.MutableSidePackets()->Tag("INPUT_FILE_PATH") = MakePacket<std::string>(
       file::JoinPath("./",
@@ -56,7 +56,7 @@ TEST(AudioDecoderCalculatorTest, TestWAV) {
 
 TEST(AudioDecoderCalculatorTest, Test48KWAV) {
   CalculatorGraphConfig::Node node_config =
-      ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"(
+      ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"pb(
         calculator: "AudioDecoderCalculator"
         input_side_packet: "INPUT_FILE_PATH:input_file_path"
         output_stream: "AUDIO:audio"
@@ -65,7 +65,7 @@ TEST(AudioDecoderCalculatorTest, Test48KWAV) {
           [type.googleapis.com/mediapipe.AudioDecoderOptions]: {
             audio_stream { stream_index: 0 }
           }
-        })");
+        })pb");
   CalculatorRunner runner(node_config);
   runner.MutableSidePackets()->Tag("INPUT_FILE_PATH") = MakePacket<std::string>(
       file::JoinPath("./",
@@ -87,7 +87,7 @@ TEST(AudioDecoderCalculatorTest, Test48KWAV) {
 
 TEST(AudioDecoderCalculatorTest, TestMP3) {
   CalculatorGraphConfig::Node node_config =
-      ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"(
+      ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"pb(
         calculator: "AudioDecoderCalculator"
         input_side_packet: "INPUT_FILE_PATH:input_file_path"
         output_stream: "AUDIO:audio"
@@ -96,7 +96,7 @@ TEST(AudioDecoderCalculatorTest, TestMP3) {
           [type.googleapis.com/mediapipe.AudioDecoderOptions]: {
             audio_stream { stream_index: 0 }
           }
-        })");
+        })pb");
   CalculatorRunner runner(node_config);
   runner.MutableSidePackets()->Tag("INPUT_FILE_PATH") = MakePacket<std::string>(
       file::JoinPath("./",
@@ -118,7 +118,7 @@ TEST(AudioDecoderCalculatorTest, TestMP3) {
 
 TEST(AudioDecoderCalculatorTest, TestAAC) {
   CalculatorGraphConfig::Node node_config =
-      ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"(
+      ParseTextProtoOrDie<CalculatorGraphConfig::Node>(R"pb(
         calculator: "AudioDecoderCalculator"
         input_side_packet: "INPUT_FILE_PATH:input_file_path"
         output_stream: "AUDIO:audio"
@@ -127,7 +127,7 @@ TEST(AudioDecoderCalculatorTest, TestAAC) {
           [type.googleapis.com/mediapipe.AudioDecoderOptions]: {
             audio_stream { stream_index: 0 }
           }
-        })");
+        })pb");
   CalculatorRunner runner(node_config);
   runner.MutableSidePackets()->Tag("INPUT_FILE_PATH") = MakePacket<std::string>(
       file::JoinPath("./",

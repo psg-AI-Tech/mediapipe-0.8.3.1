@@ -37,6 +37,7 @@ const char kSequenceExampleTag[] = "SEQUENCE_EXAMPLE";
 const char kImageTag[] = "IMAGE";
 const char kFloatContextFeaturePrefixTag[] = "FLOAT_CONTEXT_FEATURE_";
 const char kFloatFeaturePrefixTag[] = "FLOAT_FEATURE_";
+const char kBytesFeaturePrefixTag[] = "BYTES_FEATURE_";
 const char kForwardFlowEncodedTag[] = "FORWARD_FLOW_ENCODED";
 const char kBBoxTag[] = "BBOX";
 const char kKeypointsTag[] = "KEYPOINTS";
@@ -153,6 +154,9 @@ class PackMediaSequenceCalculator : public CalculatorBase {
       if (absl::StartsWith(tag, kFloatFeaturePrefixTag)) {
         cc->Inputs().Tag(tag).Set<std::vector<float>>();
       }
+      if (absl::StartsWith(tag, kBytesFeaturePrefixTag)) {
+        cc->Inputs().Tag(tag).Set<std::vector<std::string>>();
+      }
     }
 
     CHECK(cc->Outputs().HasTag(kSequenceExampleTag) ||
@@ -231,6 +235,13 @@ class PackMediaSequenceCalculator : public CalculatorBase {
           mpms::ClearFeatureFloats(key, sequence_.get());
           mpms::ClearFeatureTimestamp(key, sequence_.get());
         }
+        if (absl::StartsWith(tag, kBytesFeaturePrefixTag)) {
+          std::string key = tag.substr(sizeof(kBytesFeaturePrefixTag) /
+                                           sizeof(*kBytesFeaturePrefixTag) -
+                                       1);
+          mpms::ClearFeatureBytes(key, sequence_.get());
+          mpms::ClearFeatureTimestamp(key, sequence_.get());
+        }
         if (absl::StartsWith(tag, kKeypointsTag)) {
           std::string key =
               tag.substr(sizeof(kKeypointsTag) / sizeof(*kKeypointsTag) - 1);
@@ -243,11 +254,6 @@ class PackMediaSequenceCalculator : public CalculatorBase {
       }
     }
 
-    if (cc->Outputs().HasTag(kSequenceExampleTag)) {
-      cc->Outputs()
-          .Tag(kSequenceExampleTag)
-          .SetNextTimestampBound(Timestamp::Max());
-    }
     return absl::OkStatus();
   }
 
@@ -267,6 +273,17 @@ class PackMediaSequenceCalculator : public CalculatorBase {
     }
   }
 
+  absl::Status VerifySize() {
+    const int64 MAX_PROTO_BYTES = 1073741823;
+    std::string id = mpms::HasExampleId(*sequence_)
+                         ? mpms::GetExampleId(*sequence_)
+                         : "example";
+    RET_CHECK_LT(sequence_->ByteSizeLong(), MAX_PROTO_BYTES)
+        << "sequence '" << id
+        << "' would be too many bytes to serialize after adding features.";
+    return absl::OkStatus();
+  }
+
   absl::Status Close(CalculatorContext* cc) override {
     auto& options = cc->Options<PackMediaSequenceCalculatorOptions>();
     if (options.reconcile_metadata()) {
@@ -275,6 +292,9 @@ class PackMediaSequenceCalculator : public CalculatorBase {
           options.reconcile_region_annotations(), sequence_.get()));
     }
 
+    if (options.skip_large_sequences()) {
+      RET_CHECK_OK(VerifySize());
+    }
     if (options.output_only_if_all_present()) {
       absl::Status status = VerifySequence();
       if (!status.ok()) {
@@ -291,7 +311,9 @@ class PackMediaSequenceCalculator : public CalculatorBase {
     if (cc->Outputs().HasTag(kSequenceExampleTag)) {
       cc->Outputs()
           .Tag(kSequenceExampleTag)
-          .Add(sequence_.release(), Timestamp::PostStream());
+          .Add(sequence_.release(), options.output_as_zero_timestamp()
+                                        ? Timestamp(0ll)
+                                        : Timestamp::PostStream());
     }
     sequence_.reset();
 
@@ -393,6 +415,17 @@ class PackMediaSequenceCalculator : public CalculatorBase {
         mpms::AddFeatureFloats(key,
                                cc->Inputs().Tag(tag).Get<std::vector<float>>(),
                                sequence_.get());
+      }
+      if (absl::StartsWith(tag, kBytesFeaturePrefixTag) &&
+          !cc->Inputs().Tag(tag).IsEmpty()) {
+        std::string key = tag.substr(sizeof(kBytesFeaturePrefixTag) /
+                                         sizeof(*kBytesFeaturePrefixTag) -
+                                     1);
+        mpms::AddFeatureTimestamp(key, cc->InputTimestamp().Value(),
+                                  sequence_.get());
+        mpms::AddFeatureBytes(
+            key, cc->Inputs().Tag(tag).Get<std::vector<std::string>>(),
+            sequence_.get());
       }
       if (absl::StartsWith(tag, kBBoxTag) && !cc->Inputs().Tag(tag).IsEmpty()) {
         std::string key = "";

@@ -20,6 +20,7 @@
 #include "absl/strings/match.h"
 #include "mediapipe/framework/port/file_helpers.h"
 #include "mediapipe/framework/port/ret_check.h"
+#include "mediapipe/framework/port/statusor.h"
 #include "mediapipe/util/resource_util.h"
 
 namespace mediapipe {
@@ -39,6 +40,23 @@ absl::StatusOr<std::string> PathToResourceAsFileInternal(
   return resolved_path;
 }
 }  // namespace
+
+namespace internal {
+absl::Status DefaultGetResourceContents(const std::string& path,
+                                        std::string* output,
+                                        bool read_as_binary) {
+  if (!read_as_binary) {
+    LOG(WARNING) << "Setting \"read_as_binary\" to false is a no-op on ios.";
+  }
+  ASSIGN_OR_RETURN(std::string full_path, PathToResourceAsFile(path));
+
+  std::ifstream input_file(full_path);
+  std::stringstream buffer;
+  buffer << input_file.rdbuf();
+  buffer.str().swap(*output);
+  return absl::OkStatus();
+}
+}  // namespace internal
 
 absl::StatusOr<std::string> PathToResourceAsFile(const std::string& path) {
   // Return full path.
@@ -70,8 +88,9 @@ absl::StatusOr<std::string> PathToResourceAsFile(const std::string& path) {
   // Try the test environment.
   {
     absl::string_view workspace = "mediapipe";
+    const char* test_srcdir = std::getenv("TEST_SRCDIR");
     auto test_path =
-        file::JoinPath(std::getenv("TEST_SRCDIR"), workspace, path);
+        file::JoinPath(test_srcdir ? test_srcdir : "", workspace, path);
     if ([[NSFileManager defaultManager]
             fileExistsAtPath:[NSString
                                  stringWithUTF8String:test_path.c_str()]]) {
@@ -81,20 +100,6 @@ absl::StatusOr<std::string> PathToResourceAsFile(const std::string& path) {
   }
 
   return path;
-}
-
-absl::Status GetResourceContents(const std::string& path, std::string* output,
-                                 bool read_as_binary) {
-  if (!read_as_binary) {
-    LOG(WARNING) << "Setting \"read_as_binary\" to false is a no-op on ios.";
-  }
-  ASSIGN_OR_RETURN(std::string full_path, PathToResourceAsFile(path));
-
-  std::ifstream input_file(full_path);
-  std::stringstream buffer;
-  buffer << input_file.rdbuf();
-  buffer.str().swap(*output);
-  return absl::OkStatus();
 }
 
 }  // namespace mediapipe

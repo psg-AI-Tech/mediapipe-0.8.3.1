@@ -16,10 +16,27 @@
 #   The dependencies of mediapipe.
 
 load("//mediapipe/framework/port:build_config.bzl", "mediapipe_cc_proto_library")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 licenses(["notice"])
 
 package(default_visibility = ["//visibility:private"])
+
+bzl_library(
+    name = "expand_template_bzl",
+    srcs = [
+        "expand_template.bzl",
+    ],
+    visibility = ["//mediapipe/framework:__subpackages__"],
+)
+
+bzl_library(
+    name = "descriptor_set_bzl",
+    srcs = [
+        "descriptor_set.bzl",
+    ],
+    visibility = ["//mediapipe/framework:__subpackages__"],
+)
 
 proto_library(
     name = "proto_descriptor_proto",
@@ -272,7 +289,8 @@ cc_library(
     # Use this library through "mediapipe/framework/port:gtest_main".
     visibility = ["//mediapipe/framework/port:__pkg__"],
     deps = [
-        ":status",
+        "//mediapipe/framework/port:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
     ],
 )

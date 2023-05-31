@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/strings/str_replace.h"
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/deps/message_matchers.h"
@@ -66,8 +67,9 @@ REGISTER_CALCULATOR(TripleIntCalculator);
 // A testing example of a SwitchContainer containing two subnodes.
 // Note that the input and output tags supplied to the container node,
 // must match the input and output tags required by the subnodes.
-CalculatorGraphConfig SubnodeContainerExample() {
-  return mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+CalculatorGraphConfig SubnodeContainerExample(
+    const std::string& input_stream_handler = "") {
+  std::string config = R"pb(
     input_stream: "foo"
     input_stream: "enable"
     input_side_packet: "timezone"
@@ -81,7 +83,7 @@ CalculatorGraphConfig SubnodeContainerExample() {
           contained_node: { calculator: "TripleIntCalculator" }
           contained_node: { calculator: "PassThroughCalculator" }
         }
-      }
+      } $input_stream_handler
     }
     node {
       calculator: "PassThroughCalculator"
@@ -90,14 +92,18 @@ CalculatorGraphConfig SubnodeContainerExample() {
       output_stream: "output_foo"
       output_stream: "output_bar"
     }
-  )");
+  )pb";
+
+  return mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(
+      absl::StrReplaceAll(config,
+                          {{"$input_stream_handler", input_stream_handler}}));
 }
 
 // A testing example of a SwitchContainer containing two subnodes.
 // Note that the side-input and side-output tags supplied to the container node,
 // must match the side-input and side-output tags required by the subnodes.
 CalculatorGraphConfig SideSubnodeContainerExample() {
-  return mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+  return mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
     input_side_packet: "foo"
     input_side_packet: "enable"
     output_side_packet: "output_bar"
@@ -120,11 +126,12 @@ CalculatorGraphConfig SideSubnodeContainerExample() {
       output_side_packet: "output_foo"
       output_side_packet: "output_bar"
     }
-  )");
+  )pb");
 }
 
 // Runs the test container graph with a few input packets.
-void RunTestContainer(CalculatorGraphConfig supergraph) {
+void RunTestContainer(CalculatorGraphConfig supergraph,
+                      bool send_bounds = false) {
   CalculatorGraph graph;
   std::vector<Packet> out_foo, out_bar;
   tool::AddVectorSink("output_foo", &supergraph, &out_foo);
@@ -132,17 +139,23 @@ void RunTestContainer(CalculatorGraphConfig supergraph) {
   MP_ASSERT_OK(graph.Initialize(supergraph, {}));
   MP_ASSERT_OK(graph.StartRun({{"timezone", MakePacket<int>(3)}}));
 
-  // Send enable == true signal at 5000 us.
-  const int64 enable_ts = 5000;
-  MP_EXPECT_OK(graph.AddPacketToInputStream(
-      "enable", MakePacket<bool>(true).At(Timestamp(enable_ts))));
-  MP_ASSERT_OK(graph.WaitUntilIdle());
+  if (!send_bounds) {
+    // Send enable == true signal at 5000 us.
+    const int64 enable_ts = 5000;
+    MP_EXPECT_OK(graph.AddPacketToInputStream(
+        "enable", MakePacket<bool>(true).At(Timestamp(enable_ts))));
+    MP_ASSERT_OK(graph.WaitUntilIdle());
+  }
 
   const int packet_count = 10;
   // Send int value packets at {10K, 20K, 30K, ..., 100K}.
   for (uint64 t = 1; t <= packet_count; ++t) {
     MP_EXPECT_OK(graph.AddPacketToInputStream(
         "foo", MakePacket<int>(t).At(Timestamp(t * 10000))));
+    if (send_bounds) {
+      MP_EXPECT_OK(graph.AddPacketToInputStream(
+          "enable", MakePacket<bool>(true).At(Timestamp(t * 10000))));
+    }
     MP_ASSERT_OK(graph.WaitUntilIdle());
     // The inputs are sent to the input stream "foo", they should pass through.
     EXPECT_EQ(out_foo.size(), t);
@@ -153,15 +166,21 @@ void RunTestContainer(CalculatorGraphConfig supergraph) {
     EXPECT_EQ(out_bar.back().Get<int>(), t);
   }
 
-  // Send enable == false signal at 105K us.
-  MP_EXPECT_OK(graph.AddPacketToInputStream(
-      "enable", MakePacket<bool>(false).At(Timestamp(105000))));
-  MP_ASSERT_OK(graph.WaitUntilIdle());
+  if (!send_bounds) {
+    // Send enable == false signal at 105K us.
+    MP_EXPECT_OK(graph.AddPacketToInputStream(
+        "enable", MakePacket<bool>(false).At(Timestamp(105000))));
+    MP_ASSERT_OK(graph.WaitUntilIdle());
+  }
 
   // Send int value packets at {110K, 120K, ..., 200K}.
   for (uint64 t = 11; t <= packet_count * 2; ++t) {
     MP_EXPECT_OK(graph.AddPacketToInputStream(
         "foo", MakePacket<int>(t).At(Timestamp(t * 10000))));
+    if (send_bounds) {
+      MP_EXPECT_OK(graph.AddPacketToInputStream(
+          "enable", MakePacket<bool>(false).At(Timestamp(t * 10000))));
+    }
     MP_ASSERT_OK(graph.WaitUntilIdle());
     // The inputs are sent to the input stream "foo", they should pass through.
     EXPECT_EQ(out_foo.size(), t);
@@ -217,7 +236,7 @@ TEST(SwitchContainerTest, ApplyToSubnodes) {
   EXPECT_TRUE(SubgraphRegistry::IsRegistered("SwitchContainer"));
   CalculatorGraphConfig supergraph = SubnodeContainerExample();
   CalculatorGraphConfig expected_graph =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         node {
           name: "switchcontainer__SwitchDemuxCalculator"
           calculator: "SwitchDemuxCalculator"
@@ -225,6 +244,12 @@ TEST(SwitchContainerTest, ApplyToSubnodes) {
           input_stream: "foo"
           output_stream: "C0__:switchcontainer__c0__foo"
           output_stream: "C1__:switchcontainer__c1__foo"
+          options {
+            [mediapipe.SwitchContainerOptions.ext] {}
+          }
+          input_stream_handler {
+            input_stream_handler: "ImmediateInputStreamHandler"
+          }
         }
         node {
           name: "switchcontainer__TripleIntCalculator"
@@ -245,6 +270,12 @@ TEST(SwitchContainerTest, ApplyToSubnodes) {
           input_stream: "C0__:switchcontainer__c0__bar"
           input_stream: "C1__:switchcontainer__c1__bar"
           output_stream: "bar"
+          options {
+            [mediapipe.SwitchContainerOptions.ext] {}
+          }
+          input_stream_handler {
+            input_stream_handler: "ImmediateInputStreamHandler"
+          }
         }
         node {
           calculator: "PassThroughCalculator"
@@ -256,7 +287,7 @@ TEST(SwitchContainerTest, ApplyToSubnodes) {
         input_stream: "foo"
         input_stream: "enable"
         input_side_packet: "timezone"
-      )");
+      )pb");
   expected_graph = OrderNodes(expected_graph, {4, 0, 3, 1, 2});
   MP_EXPECT_OK(tool::ExpandSubgraphs(&supergraph));
   EXPECT_THAT(supergraph, mediapipe::EqualsProto(expected_graph));
@@ -270,12 +301,161 @@ TEST(SwitchContainerTest, RunsWithSubnodes) {
   RunTestContainer(supergraph);
 }
 
+// Shows the SwitchContainer  does not allow input_stream_handler overwrite.
+TEST(SwitchContainerTest, ValidateInputStreamHandler) {
+  EXPECT_TRUE(SubgraphRegistry::IsRegistered("SwitchContainer"));
+  CalculatorGraph graph;
+  CalculatorGraphConfig supergraph = SideSubnodeContainerExample();
+  *supergraph.mutable_input_stream_handler()->mutable_input_stream_handler() =
+      "DefaultInputStreamHandler";
+  MP_ASSERT_OK(graph.Initialize(supergraph, {}));
+  CalculatorGraphConfig expected_graph = mediapipe::ParseTextProtoOrDie<
+      CalculatorGraphConfig>(R"pb(
+    node {
+      name: "switchcontainer__SwitchDemuxCalculator"
+      calculator: "SwitchDemuxCalculator"
+      input_side_packet: "ENABLE:enable"
+      input_side_packet: "foo"
+      output_side_packet: "C0__:switchcontainer__c0__foo"
+      output_side_packet: "C1__:switchcontainer__c1__foo"
+      options {
+        [mediapipe.SwitchContainerOptions.ext] {}
+      }
+      input_stream_handler {
+        input_stream_handler: "ImmediateInputStreamHandler"
+      }
+    }
+    node {
+      name: "switchcontainer__TripleIntCalculator"
+      calculator: "TripleIntCalculator"
+      input_side_packet: "switchcontainer__c0__foo"
+      output_side_packet: "switchcontainer__c0__bar"
+      input_stream_handler { input_stream_handler: "DefaultInputStreamHandler" }
+    }
+    node {
+      name: "switchcontainer__PassThroughCalculator"
+      calculator: "PassThroughCalculator"
+      input_side_packet: "switchcontainer__c1__foo"
+      output_side_packet: "switchcontainer__c1__bar"
+      input_stream_handler { input_stream_handler: "DefaultInputStreamHandler" }
+    }
+    node {
+      name: "switchcontainer__SwitchMuxCalculator"
+      calculator: "SwitchMuxCalculator"
+      input_side_packet: "ENABLE:enable"
+      input_side_packet: "C0__:switchcontainer__c0__bar"
+      input_side_packet: "C1__:switchcontainer__c1__bar"
+      output_side_packet: "bar"
+      options {
+        [mediapipe.SwitchContainerOptions.ext] {}
+      }
+      input_stream_handler {
+        input_stream_handler: "ImmediateInputStreamHandler"
+      }
+    }
+    node {
+      calculator: "PassThroughCalculator"
+      input_side_packet: "foo"
+      input_side_packet: "bar"
+      output_side_packet: "output_foo"
+      output_side_packet: "output_bar"
+      input_stream_handler { input_stream_handler: "DefaultInputStreamHandler" }
+    }
+    input_stream_handler { input_stream_handler: "DefaultInputStreamHandler" }
+    executor {}
+    input_side_packet: "foo"
+    input_side_packet: "enable"
+    output_side_packet: "output_bar"
+  )pb");
+  EXPECT_THAT(graph.Config(), mediapipe::EqualsProto(expected_graph));
+}
+
+// Expands the SwitchContainer with a node-level input_stream_handler.
+TEST(SwitchContainerTest, OverrideInputStreamHandler) {
+  EXPECT_TRUE(SubgraphRegistry::IsRegistered("SwitchContainer"));
+  CalculatorGraph graph;
+  CalculatorGraphConfig supergraph = SubnodeContainerExample(
+      R"pb(input_stream_handler {
+             input_stream_handler: "DefaultInputStreamHandler"
+           })pb");
+  *supergraph.mutable_node(0)
+       ->mutable_input_stream_handler()
+       ->mutable_input_stream_handler() = "DefaultInputStreamHandler";
+  MP_ASSERT_OK(graph.Initialize(supergraph, {}));
+  CalculatorGraphConfig expected_graph =
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
+        node {
+          name: "switchcontainer__SwitchDemuxCalculator"
+          calculator: "SwitchDemuxCalculator"
+          input_stream: "ENABLE:enable"
+          input_stream: "foo"
+          output_stream: "C0__:switchcontainer__c0__foo"
+          output_stream: "C1__:switchcontainer__c1__foo"
+          options {
+            [mediapipe.SwitchContainerOptions.ext] {}
+          }
+          input_stream_handler {
+            input_stream_handler: "DefaultInputStreamHandler"
+          }
+        }
+        node {
+          name: "switchcontainer__TripleIntCalculator"
+          calculator: "TripleIntCalculator"
+          input_stream: "switchcontainer__c0__foo"
+          output_stream: "switchcontainer__c0__bar"
+        }
+        node {
+          name: "switchcontainer__PassThroughCalculator"
+          calculator: "PassThroughCalculator"
+          input_stream: "switchcontainer__c1__foo"
+          output_stream: "switchcontainer__c1__bar"
+        }
+        node {
+          name: "switchcontainer__SwitchMuxCalculator"
+          calculator: "SwitchMuxCalculator"
+          input_stream: "ENABLE:enable"
+          input_stream: "C0__:switchcontainer__c0__bar"
+          input_stream: "C1__:switchcontainer__c1__bar"
+          output_stream: "bar"
+          options {
+            [mediapipe.SwitchContainerOptions.ext] {}
+          }
+          input_stream_handler {
+            input_stream_handler: "ImmediateInputStreamHandler"
+          }
+        }
+        node {
+          calculator: "PassThroughCalculator"
+          input_stream: "foo"
+          input_stream: "bar"
+          output_stream: "output_foo"
+          output_stream: "output_bar"
+        }
+        input_stream: "foo"
+        input_stream: "enable"
+        executor {}
+        input_side_packet: "timezone"
+      )pb");
+  EXPECT_THAT(graph.Config(), mediapipe::EqualsProto(expected_graph));
+}
+
+// Runs the SwitchContainer with a node-level input_stream_handler.
+TEST(SwitchContainerTest, RunsWithInputStreamHandler) {
+  EXPECT_TRUE(SubgraphRegistry::IsRegistered("SwitchContainer"));
+  CalculatorGraphConfig supergraph = SubnodeContainerExample(
+      R"pb(input_stream_handler {
+             input_stream_handler: "DefaultInputStreamHandler"
+           })pb");
+  MP_EXPECT_OK(tool::ExpandSubgraphs(&supergraph));
+  RunTestContainer(supergraph, true);
+}
+
 // Shows the SwitchContainer container applied to a pair of simple subnodes.
 TEST(SwitchContainerTest, ApplyToSideSubnodes) {
   EXPECT_TRUE(SubgraphRegistry::IsRegistered("SwitchContainer"));
   CalculatorGraphConfig supergraph = SideSubnodeContainerExample();
   CalculatorGraphConfig expected_graph =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_side_packet: "foo"
         input_side_packet: "enable"
         output_side_packet: "output_bar"
@@ -286,6 +466,12 @@ TEST(SwitchContainerTest, ApplyToSideSubnodes) {
           input_side_packet: "foo"
           output_side_packet: "C0__:switchcontainer__c0__foo"
           output_side_packet: "C1__:switchcontainer__c1__foo"
+          options {
+            [mediapipe.SwitchContainerOptions.ext] {}
+          }
+          input_stream_handler {
+            input_stream_handler: "ImmediateInputStreamHandler"
+          }
         }
         node {
           name: "switchcontainer__TripleIntCalculator"
@@ -306,6 +492,12 @@ TEST(SwitchContainerTest, ApplyToSideSubnodes) {
           input_side_packet: "C0__:switchcontainer__c0__bar"
           input_side_packet: "C1__:switchcontainer__c1__bar"
           output_side_packet: "bar"
+          options {
+            [mediapipe.SwitchContainerOptions.ext] {}
+          }
+          input_stream_handler {
+            input_stream_handler: "ImmediateInputStreamHandler"
+          }
         }
         node {
           calculator: "PassThroughCalculator"
@@ -314,7 +506,7 @@ TEST(SwitchContainerTest, ApplyToSideSubnodes) {
           output_side_packet: "output_foo"
           output_side_packet: "output_bar"
         }
-      )");
+      )pb");
   expected_graph = OrderNodes(expected_graph, {4, 0, 3, 1, 2});
   MP_EXPECT_OK(tool::ExpandSubgraphs(&supergraph));
   EXPECT_THAT(supergraph, mediapipe::EqualsProto(expected_graph));
@@ -332,7 +524,7 @@ TEST(SwitchContainerTest, RunWithSideSubnodes) {
 TEST(SwitchContainerTest, ValidateSideInputs) {
   EXPECT_TRUE(SubgraphRegistry::IsRegistered("SwitchContainer"));
   CalculatorGraphConfig supergraph =
-      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"(
+      mediapipe::ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         input_side_packet: "foo"
         input_side_packet: "enable"
         output_side_packet: "output_bar"
@@ -356,7 +548,7 @@ TEST(SwitchContainerTest, ValidateSideInputs) {
           output_side_packet: "output_foo"
           output_side_packet: "output_bar"
         }
-      )");
+      )pb");
   auto status = tool::ExpandSubgraphs(&supergraph);
   EXPECT_EQ(std::pair(status.code(), std::string(status.message())),
             std::pair(absl::StatusCode::kInvalidArgument,
